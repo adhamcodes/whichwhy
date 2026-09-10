@@ -3,8 +3,11 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
+	"strings"
 
 	"github.com/adhamcodes/whichwhy/internal/resolver"
+	ps "github.com/adhamcodes/whichwhy/internal/shell/powershell"
 )
 
 const usage = `WhichWhy — know exactly which command will run, and why.
@@ -17,13 +20,27 @@ Usage:
   whichwhy --help
   whichwhy --version
 
-External command inspection is available. Shell-aware resolution is still under development.
+External command inspection is available. PowerShell session integration is experimental.
 `
 
 type externalResolver func(string) (resolver.Result, error)
 
 // Run executes the command-line interface and returns a process exit code.
 func Run(args []string, stdout, stderr io.Writer, version string) int {
+	if len(args) > 0 && args[0] == "__powershell" {
+		return runPowerShellEvidence(args[1:], stdout, stderr)
+	}
+
+	if len(args) == 2 && args[0] == "init" && strings.EqualFold(args[1], "powershell") {
+		executable, err := os.Executable()
+		if err != nil {
+			fmt.Fprintf(stderr, "whichwhy: locate executable: %v\n", err)
+			return 2
+		}
+		fmt.Fprint(stdout, ps.InitScript(executable))
+		return 0
+	}
+
 	return run(args, stdout, stderr, version, resolver.ResolveExternal)
 }
 
