@@ -7,7 +7,7 @@ import (
 	ps "github.com/adhamcodes/whichwhy/internal/shell/powershell"
 )
 
-func runPowerShellEvidence(args []string, stdout, stderr io.Writer) int {
+func runPowerShellEvidence(args []string, stdout, stderr io.Writer, jsonOutput bool) int {
 	if len(args) < 3 {
 		fmt.Fprintln(stderr, "whichwhy: incomplete PowerShell evidence")
 		return 2
@@ -18,7 +18,9 @@ func runPowerShellEvidence(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "whichwhy: %v\n", err)
 		return 2
 	}
-
+	if jsonOutput {
+		return printPowerShellJSON(stdout, stderr, evidence)
+	}
 	return printPowerShellEvidence(stdout, evidence)
 }
 

@@ -15,6 +15,7 @@ const usage = `WhichWhy — know exactly which command will run, and why.
 
 Usage:
   whichwhy <command>
+  whichwhy <command> --json
   whichwhy path
   whichwhy doctor
   whichwhy init <shell>
@@ -28,8 +29,13 @@ type externalResolver func(string) (resolver.Result, error)
 
 // Run executes the command-line interface and returns a process exit code.
 func Run(args []string, stdout, stderr io.Writer, version string) int {
-	if len(args) > 0 && args[0] == "__powershell" {
-		return runPowerShellEvidence(args[1:], stdout, stderr)
+	if len(args) > 0 {
+		switch args[0] {
+		case "__powershell":
+			return runPowerShellEvidence(args[1:], stdout, stderr, false)
+		case "__powershell-json":
+			return runPowerShellEvidence(args[1:], stdout, stderr, true)
+		}
 	}
 
 	if len(args) == 2 && args[0] == "init" && strings.EqualFold(args[1], "powershell") {
@@ -62,13 +68,17 @@ func run(args []string, stdout, stderr io.Writer, version string, resolve extern
 	case "-v", "--version", "version":
 		fmt.Fprintf(stdout, "whichwhy %s\n", version)
 		return 0
+	case "path":
+		fmt.Fprintln(stderr, "whichwhy: path currently accepts no additional arguments")
+		return 2
 	case "doctor", "init":
 		fmt.Fprintf(stderr, "whichwhy: %s is not implemented yet\n", args[0])
 		return 2
 	}
 
-	if len(args) != 1 {
-		fmt.Fprintln(stderr, "whichwhy: command inspection currently accepts one command name")
+	jsonOutput := len(args) == 2 && args[1] == "--json"
+	if len(args) != 1 && !jsonOutput {
+		fmt.Fprintln(stderr, "whichwhy: command inspection accepts one command name and optional --json")
 		return 2
 	}
 
@@ -76,6 +86,9 @@ func run(args []string, stdout, stderr io.Writer, version string, resolve extern
 	if err != nil {
 		fmt.Fprintf(stderr, "whichwhy: %v\n", err)
 		return 2
+	}
+	if jsonOutput {
+		return printExternalJSON(stdout, stderr, result)
 	}
 	return printExternalResult(stdout, result)
 }
