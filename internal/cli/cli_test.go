@@ -2,8 +2,11 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
+
+	"github.com/adhamcodes/whichwhy/internal/resolver"
 )
 
 func TestRunWithoutArgumentsShowsHelp(t *testing.T) {
@@ -40,19 +43,71 @@ func TestRunVersion(t *testing.T) {
 	}
 }
 
-func TestRunUnknownCommandFailsClearly(t *testing.T) {
+func TestRunCommandShowsExternalWinnerAndShadowedCandidates(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
+	resolve := func(command string) (resolver.Result, error) {
+		return resolver.Result{
+			Command: command,
+			Candidates: []resolver.Candidate{
+				{Path: `/first/python`},
+				{Path: `/second/python`},
+			},
+		}, nil
+	}
 
-	code := Run([]string{"python"}, &stdout, &stderr, "dev")
+	code := run([]string{"python"}, &stdout, &stderr, "dev", resolve)
+
+	if code != 0 {
+		t.Fatalf("run() exit code = %d, want 0", code)
+	}
+	output := stdout.String()
+	for _, want := range []string{"EXTERNAL COMMAND WINNER", `/first/python`, "OTHER EXTERNAL CANDIDATES", `/second/python`, "CURRENT LIMIT"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("stdout = %q, want %q", output, want)
+		}
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunCommandReportsMissingExternalCandidate(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	resolve := func(command string) (resolver.Result, error) {
+		return resolver.Result{Command: command}, nil
+	}
+
+	code := run([]string{"missing"}, &stdout, &stderr, "dev", resolve)
+
+	if code != 1 {
+		t.Fatalf("run() exit code = %d, want 1", code)
+	}
+	if !strings.Contains(stdout.String(), "No external command candidate") {
+		t.Fatalf("stdout = %q, want missing-candidate message", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunCommandReportsResolverError(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	resolve := func(string) (resolver.Result, error) {
+		return resolver.Result{}, errors.New("resolver failed")
+	}
+
+	code := run([]string{"python"}, &stdout, &stderr, "dev", resolve)
 
 	if code != 2 {
-		t.Fatalf("Run() exit code = %d, want 2", code)
+		t.Fatalf("run() exit code = %d, want 2", code)
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("stdout = %q, want empty", stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "not implemented yet") {
-		t.Fatalf("stderr = %q, want development-state message", stderr.String())
+	if !strings.Contains(stderr.String(), "resolver failed") {
+		t.Fatalf("stderr = %q, want resolver error", stderr.String())
 	}
 }
