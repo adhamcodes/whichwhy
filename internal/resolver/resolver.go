@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 )
 
 var (
@@ -47,8 +49,33 @@ func resolveExternal(command, pathValue, pathExtValue string) (Result, error) {
 		return Result{}, fmt.Errorf("%w: %s", ErrExplicitPathUnsupported, command)
 	}
 
-	candidates := findCandidates(command, filepath.SplitList(pathValue), pathExtValue)
+	candidates := distinctCandidatePaths(findCandidates(command, filepath.SplitList(pathValue), pathExtValue))
 	return Result{Command: command, Candidates: candidates}, nil
+}
+
+// distinctCandidatePaths removes repeated references to the same visible path while
+// preserving the first search-order occurrence. It deliberately does not resolve
+// symlinks: two different visible paths can still be meaningful resolution evidence.
+func distinctCandidatePaths(candidates []Candidate) []Candidate {
+	distinct := make([]Candidate, 0, len(candidates))
+	seen := make(map[string]struct{}, len(candidates))
+	for _, candidate := range candidates {
+		key := candidatePathKey(candidate.Path)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		distinct = append(distinct, candidate)
+	}
+	return distinct
+}
+
+func candidatePathKey(path string) string {
+	key := filepath.Clean(path)
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(key)
+	}
+	return key
 }
 
 func absolutePath(path string) string {
