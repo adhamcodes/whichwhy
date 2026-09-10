@@ -53,3 +53,11 @@ jobs:
         run: go vet ./...
       - name: Build CLI
         run: go build ./cmd/whichwhy
+      - name: PowerShell 5.1 oracle
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: .\scripts\test-powershell-oracle.ps1 -ExecutablePath .\whichwhy.exe
+      - name: PowerShell 7 oracle
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\scripts\test-powershell-oracle.ps1 -ExecutablePath .\whichwhy.exe
