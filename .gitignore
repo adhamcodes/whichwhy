@@ -1,0 +1,18 @@
+# Build output
+/bin/
+/dist/
+/whichwhy
+/whichwhy.exe
+
+# Test and coverage output
+*.out
+coverage.txt
+coverage.html
+
+# Local tooling
+.vscode/
+.idea/
+
+# Operating system files
+.DS_Store
+Thumbs.db

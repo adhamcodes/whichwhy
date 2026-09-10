@@ -63,6 +63,16 @@ whichwhy --version           Show the installed version
 
 The final command surface may change during development if testing shows a simpler or more accurate design.
 
+## Development
+
+WhichWhy currently targets Go 1.27.
+
+```text
+go test ./...
+go vet ./...
+go build ./cmd/whichwhy
+```
+
 ## License
 
-WhichWhy is planned to be released under the MIT License before the repository becomes public.
+MIT
