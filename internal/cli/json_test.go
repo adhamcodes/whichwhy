@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/adhamcodes/whichwhy/internal/pathdiag"
 	"github.com/adhamcodes/whichwhy/internal/resolver"
 )
 
@@ -24,6 +25,7 @@ func TestRunCommandJSONPreservesExternalResolutionEvidence(t *testing.T) {
 	}
 
 	code := run([]string{"python", "--json"}, &stdout, &stderr, "dev", resolve)
+
 	if code != 0 {
 		t.Fatalf("run() exit code = %d, want 0", code)
 	}
@@ -60,6 +62,7 @@ func TestRunCommandJSONKeepsMissingResultMachineReadable(t *testing.T) {
 	}
 
 	code := run([]string{"missing", "--json"}, &stdout, &stderr, "dev", resolve)
+
 	if code != 1 {
 		t.Fatalf("run() exit code = %d, want 1", code)
 	}
@@ -108,6 +111,80 @@ func TestRunPowerShellJSONPreservesShellWinnerAndOrder(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunPathJSONPreservesDiagnostics(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	lookup := func(name string) (string, bool) {
+		if name != "PATH" {
+			t.Fatalf("lookup name = %q, want PATH", name)
+		}
+		return "ignored", true
+	}
+	inspect := func(value string) pathdiag.Report {
+		if value != "ignored" {
+			t.Fatalf("inspect value = %q, want ignored", value)
+		}
+		return pathdiag.Report{
+			Entries: []pathdiag.Entry{
+				{Index: 1, Value: `/first`, Directory: true},
+				{Index: 2, Value: `/missing`, Missing: true},
+				{Index: 3, Value: `/first`, Directory: true, DuplicateOf: 1},
+				{Index: 4, Empty: true},
+			},
+			MissingCount:   1,
+			DuplicateCount: 1,
+			EmptyCount:     1,
+		}
+	}
+
+	code := runPathJSON(&stdout, &stderr, lookup, inspect)
+	if code != 0 {
+		t.Fatalf("runPathJSON() exit code = %d, want 0", code)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+
+	var doc jsonPathDocument
+	if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\n%s", err, stdout.String())
+	}
+	if doc.SchemaVersion != 1 || doc.Kind != "path" || doc.Scope != "process-path" {
+		t.Fatalf("unexpected PATH JSON metadata: %#v", doc)
+	}
+	if got, want := len(doc.Entries), 4; got != want {
+		t.Fatalf("entry count = %d, want %d", got, want)
+	}
+	if !doc.Entries[0].Directory || !doc.Entries[1].Missing || doc.Entries[2].DuplicateOf != 1 || !doc.Entries[3].Empty {
+		t.Fatalf("PATH JSON entries = %#v", doc.Entries)
+	}
+	if doc.Summary.Entries != 4 || doc.Summary.Missing != 1 || doc.Summary.Duplicate != 1 || doc.Summary.Empty != 1 {
+		t.Fatalf("PATH JSON summary = %#v", doc.Summary)
+	}
+}
+
+func TestRunPathJSONKeepsUnsetPathMachineReadable(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := runPathJSON(&stdout, &stderr, func(string) (string, bool) { return "", false }, pathdiag.Inspect)
+	if code != 1 {
+		t.Fatalf("runPathJSON() exit code = %d, want 1", code)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+
+	var doc jsonPathDocument
+	if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\n%s", err, stdout.String())
+	}
+	if doc.Error != "PATH is not set" || doc.Entries == nil || len(doc.Entries) != 0 {
+		t.Fatalf("PATH JSON unset result = %#v", doc)
 	}
 }
 
