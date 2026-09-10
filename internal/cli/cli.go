@@ -17,6 +17,7 @@ Usage:
   whichwhy <command>
   whichwhy <command> --json
   whichwhy path
+  whichwhy path --json
   whichwhy doctor
   whichwhy init <shell>
   whichwhy --help
@@ -48,8 +49,16 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 		return 0
 	}
 
-	if len(args) == 1 && args[0] == "path" {
-		return runPath(stdout, stderr, os.LookupEnv, pathdiag.Inspect)
+	if len(args) > 0 && args[0] == "path" {
+		switch {
+		case len(args) == 1:
+			return runPath(stdout, stderr, os.LookupEnv, pathdiag.Inspect)
+		case len(args) == 2 && args[1] == "--json":
+			return runPathJSON(stdout, stderr, os.LookupEnv, pathdiag.Inspect)
+		default:
+			fmt.Fprintln(stderr, "whichwhy: path accepts optional --json")
+			return 2
+		}
 	}
 
 	return run(args, stdout, stderr, version, resolver.ResolveExternal)
@@ -68,9 +77,6 @@ func run(args []string, stdout, stderr io.Writer, version string, resolve extern
 	case "-v", "--version", "version":
 		fmt.Fprintf(stdout, "whichwhy %s\n", version)
 		return 0
-	case "path":
-		fmt.Fprintln(stderr, "whichwhy: path currently accepts no additional arguments")
-		return 2
 	case "doctor", "init":
 		fmt.Fprintf(stderr, "whichwhy: %s is not implemented yet\n", args[0])
 		return 2

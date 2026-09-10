@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/adhamcodes/whichwhy/internal/pathdiag"
 	"github.com/adhamcodes/whichwhy/internal/resolver"
 	ps "github.com/adhamcodes/whichwhy/internal/shell/powershell"
 )
@@ -38,6 +39,34 @@ type jsonDocument struct {
 	Limitations     []string        `json:"limitations"`
 }
 
+type jsonPathEntry struct {
+	Index       int    `json:"index"`
+	Value       string `json:"value"`
+	Directory   bool   `json:"directory"`
+	Missing     bool   `json:"missing"`
+	Empty       bool   `json:"empty"`
+	DuplicateOf int    `json:"duplicate_of,omitempty"`
+	Error       string `json:"error,omitempty"`
+}
+
+type jsonPathSummary struct {
+	Entries      int `json:"entries"`
+	Missing      int `json:"missing"`
+	Duplicate    int `json:"duplicate"`
+	Empty        int `json:"empty"`
+	NotDirectory int `json:"not_directory"`
+	Errors       int `json:"errors"`
+}
+
+type jsonPathDocument struct {
+	SchemaVersion int             `json:"schema_version"`
+	Kind          string          `json:"kind"`
+	Scope         string          `json:"scope"`
+	Entries       []jsonPathEntry `json:"entries"`
+	Summary       jsonPathSummary `json:"summary"`
+	Error         string          `json:"error,omitempty"`
+}
+
 func printExternalJSON(stdout, stderr io.Writer, result resolver.Result) int {
 	doc := externalJSONDocument(result)
 	if err := writeJSON(stdout, doc); err != nil {
@@ -58,6 +87,31 @@ func printPowerShellJSON(stdout, stderr io.Writer, evidence ps.Evidence) int {
 	}
 	if doc.Winner == nil {
 		return 1
+	}
+	return 0
+}
+
+func runPathJSON(stdout, stderr io.Writer, lookup envLookup, inspect pathInspector) int {
+	value, ok := lookup("PATH")
+	if !ok {
+		doc := jsonPathDocument{
+			SchemaVersion: jsonSchemaVersion,
+			Kind:          "path",
+			Scope:         "process-path",
+			Entries:       []jsonPathEntry{},
+			Error:         "PATH is not set",
+		}
+		if err := writeJSON(stdout, doc); err != nil {
+			fmt.Fprintf(stderr, "whichwhy: write JSON: %v\n", err)
+			return 2
+		}
+		return 1
+	}
+
+	doc := pathJSONDocument(inspect(value))
+	if err := writeJSON(stdout, doc); err != nil {
+		fmt.Fprintf(stderr, "whichwhy: write JSON: %v\n", err)
+		return 2
 	}
 	return 0
 }
@@ -121,6 +175,36 @@ func powerShellJSONDocument(evidence ps.Evidence) jsonDocument {
 		doc.WinnerReason = "first match reported by PowerShell for the current loaded session"
 	}
 	return doc
+}
+
+func pathJSONDocument(report pathdiag.Report) jsonPathDocument {
+	entries := make([]jsonPathEntry, 0, len(report.Entries))
+	for _, entry := range report.Entries {
+		entries = append(entries, jsonPathEntry{
+			Index:       entry.Index,
+			Value:       entry.Value,
+			Directory:   entry.Directory,
+			Missing:     entry.Missing,
+			Empty:       entry.Empty,
+			DuplicateOf: entry.DuplicateOf,
+			Error:       entry.Error,
+		})
+	}
+
+	return jsonPathDocument{
+		SchemaVersion: jsonSchemaVersion,
+		Kind:          "path",
+		Scope:         "process-path",
+		Entries:       entries,
+		Summary: jsonPathSummary{
+			Entries:      len(report.Entries),
+			Missing:      report.MissingCount,
+			Duplicate:    report.DuplicateCount,
+			Empty:        report.EmptyCount,
+			NotDirectory: report.NotDirectoryCount,
+			Errors:       report.ErrorCount,
+		},
+	}
 }
 
 func normalizePowerShellKind(commandType string) string {
