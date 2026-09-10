@@ -44,6 +44,24 @@ func TestResolveExternalPreservesDirectoryOrder(t *testing.T) {
 	}
 }
 
+func TestResolveExternalCollapsesRepeatedIdenticalCandidatePath(t *testing.T) {
+	directory := t.TempDir()
+	command := "whichwhy-repeated-path-test"
+	writeTestCommand(t, directory, command)
+
+	pathValue := strings.Join([]string{directory, directory}, string(os.PathListSeparator))
+	result, err := resolveExternal(command, pathValue, testPathExt())
+	if err != nil {
+		t.Fatalf("resolveExternal() error = %v", err)
+	}
+	if got, want := len(result.Candidates), 1; got != want {
+		t.Fatalf("candidate count = %d, want %d: %#v", got, want, result.Candidates)
+	}
+	if result.Candidates[0].DirectoryIndex != 0 {
+		t.Fatalf("winner directory index = %d, want first occurrence 0", result.Candidates[0].DirectoryIndex)
+	}
+}
+
 func TestResolveExternalReturnsNoCandidatesWhenCommandIsMissing(t *testing.T) {
 	result, err := resolveExternal("definitely-not-present", t.TempDir(), testPathExt())
 	if err != nil {
