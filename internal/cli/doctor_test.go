@@ -42,6 +42,34 @@ func TestRunDoctorReportsConsistentCommandDiscovery(t *testing.T) {
 	}
 }
 
+func TestRunDoctorIgnoresRepeatedDiscoveryOfSameExecutable(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	current := filepath.Join(t.TempDir(), "whichwhy")
+
+	resolve := func(command string) (resolver.Result, error) {
+		return resolver.Result{
+			Command: command,
+			Candidates: []resolver.Candidate{
+				{Path: current, DirectoryIndex: 2},
+				{Path: current, DirectoryIndex: 5},
+			},
+		}, nil
+	}
+
+	code := runDoctor(&stdout, &stderr, "dev", func() (string, error) { return current, nil }, resolve)
+	if code != 0 {
+		t.Fatalf("runDoctor() exit code = %d, want 0", code)
+	}
+	output := stdout.String()
+	if strings.Contains(output, "OTHER WHICHWHY CANDIDATES") || !strings.Contains(output, "OK — command discovery is consistent") {
+		t.Fatalf("stdout = %q, want repeated references to same executable treated as one candidate", output)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
 func TestRunDoctorWarnsWhenCommandIsNotOnPath(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
