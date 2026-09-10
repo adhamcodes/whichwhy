@@ -20,6 +20,9 @@ func TestInitScriptBuildsMinimalPowerShellBridge(t *testing.T) {
 		}
 	}
 
+	if strings.ContainsAny(script, "\r\n") {
+		t.Fatalf("InitScript() must be one physical line for direct Invoke-Expression use: %q", script)
+	}
 	if strings.Contains(script, "ConvertTo-Json") {
 		t.Fatal("InitScript() should not require ConvertTo-Json or module auto-loading")
 	}
