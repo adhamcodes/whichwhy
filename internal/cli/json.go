@@ -67,6 +67,28 @@ type jsonPathDocument struct {
 	Error         string          `json:"error,omitempty"`
 }
 
+type jsonPlatform struct {
+	OS   string `json:"os"`
+	Arch string `json:"arch"`
+}
+
+type jsonDoctorDiscovery struct {
+	State           string   `json:"state"`
+	PathWinner      string   `json:"path_winner,omitempty"`
+	OtherCandidates []string `json:"other_candidates"`
+}
+
+type jsonDoctorDocument struct {
+	SchemaVersion     int                 `json:"schema_version"`
+	Kind              string              `json:"kind"`
+	Status            string              `json:"status"`
+	Version           string              `json:"version"`
+	Platform          jsonPlatform        `json:"platform"`
+	RunningExecutable string              `json:"running_executable"`
+	CommandDiscovery  jsonDoctorDiscovery `json:"command_discovery"`
+	Limitations       []string            `json:"limitations"`
+}
+
 func printExternalJSON(stdout, stderr io.Writer, result resolver.Result) int {
 	doc := externalJSONDocument(result)
 	if err := writeJSON(stdout, doc); err != nil {
@@ -114,6 +136,21 @@ func runPathJSON(stdout, stderr io.Writer, lookup envLookup, inspect pathInspect
 		return 2
 	}
 	return 0
+}
+
+func runDoctorJSON(stdout, stderr io.Writer, version string, executable executableLocator, resolve externalResolver) int {
+	report, err := inspectDoctor(version, executable, resolve)
+	if err != nil {
+		fmt.Fprintf(stderr, "whichwhy: %v\n", err)
+		return 2
+	}
+
+	doc := doctorJSONDocument(report)
+	if err := writeJSON(stdout, doc); err != nil {
+		fmt.Fprintf(stderr, "whichwhy: write JSON: %v\n", err)
+		return 2
+	}
+	return report.Status
 }
 
 func externalJSONDocument(result resolver.Result) jsonDocument {
@@ -203,6 +240,43 @@ func pathJSONDocument(report pathdiag.Report) jsonPathDocument {
 			Empty:        report.EmptyCount,
 			NotDirectory: report.NotDirectoryCount,
 			Errors:       report.ErrorCount,
+		},
+	}
+}
+
+func doctorJSONDocument(report doctorReport) jsonDoctorDocument {
+	otherCandidates := make([]string, 0)
+	pathWinner := ""
+	if len(report.Candidates) > 0 {
+		pathWinner = report.Candidates[0].Path
+		otherCandidates = make([]string, 0, len(report.Candidates)-1)
+		for _, candidate := range report.Candidates[1:] {
+			otherCandidates = append(otherCandidates, candidate.Path)
+		}
+	}
+
+	status := "ok"
+	if report.Status != 0 {
+		status = "warning"
+	}
+
+	return jsonDoctorDocument{
+		SchemaVersion: jsonSchemaVersion,
+		Kind:          "doctor",
+		Status:        status,
+		Version:       report.Version,
+		Platform: jsonPlatform{
+			OS:   report.OS,
+			Arch: report.Arch,
+		},
+		RunningExecutable: report.RunningExecutable,
+		CommandDiscovery: jsonDoctorDiscovery{
+			State:           string(report.Discovery),
+			PathWinner:      pathWinner,
+			OtherCandidates: otherCandidates,
+		},
+		Limitations: []string{
+			"Command discovery is limited to the process-visible external search path.",
 		},
 	}
 }

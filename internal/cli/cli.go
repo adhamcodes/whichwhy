@@ -19,6 +19,7 @@ Usage:
   whichwhy path
   whichwhy path --json
   whichwhy doctor
+  whichwhy doctor --json
   whichwhy init <shell>
   whichwhy --help
   whichwhy --version
@@ -62,11 +63,15 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 	}
 
 	if len(args) > 0 && args[0] == "doctor" {
-		if len(args) != 1 {
-			fmt.Fprintln(stderr, "whichwhy: doctor currently accepts no additional arguments")
+		switch {
+		case len(args) == 1:
+			return runDoctor(stdout, stderr, version, os.Executable, resolver.ResolveExternal)
+		case len(args) == 2 && args[1] == "--json":
+			return runDoctorJSON(stdout, stderr, version, os.Executable, resolver.ResolveExternal)
+		default:
+			fmt.Fprintln(stderr, "whichwhy: doctor accepts optional --json")
 			return 2
 		}
-		return runDoctor(stdout, stderr, version, os.Executable, resolver.ResolveExternal)
 	}
 
 	return run(args, stdout, stderr, version, resolver.ResolveExternal)
