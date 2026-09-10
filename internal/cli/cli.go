@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/adhamcodes/whichwhy/internal/pathdiag"
 	"github.com/adhamcodes/whichwhy/internal/resolver"
 	ps "github.com/adhamcodes/whichwhy/internal/shell/powershell"
 )
@@ -20,7 +21,7 @@ Usage:
   whichwhy --help
   whichwhy --version
 
-External command inspection is available. PowerShell session integration is experimental.
+External command inspection and PATH diagnostics are available. PowerShell session integration is experimental.
 `
 
 type externalResolver func(string) (resolver.Result, error)
@@ -41,6 +42,10 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 		return 0
 	}
 
+	if len(args) == 1 && args[0] == "path" {
+		return runPath(stdout, stderr, os.LookupEnv, pathdiag.Inspect)
+	}
+
 	return run(args, stdout, stderr, version, resolver.ResolveExternal)
 }
 
@@ -57,7 +62,7 @@ func run(args []string, stdout, stderr io.Writer, version string, resolve extern
 	case "-v", "--version", "version":
 		fmt.Fprintf(stdout, "whichwhy %s\n", version)
 		return 0
-	case "path", "doctor", "init":
+	case "doctor", "init":
 		fmt.Fprintf(stderr, "whichwhy: %s is not implemented yet\n", args[0])
 		return 2
 	}
