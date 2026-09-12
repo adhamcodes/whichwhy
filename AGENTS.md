@@ -2,6 +2,8 @@
 
 This repository is a correctness-first command-resolution debugger. Treat every claim about what a shell will execute as something that must be supported by evidence.
 
+Before implementation work, read `docs/product-contract.md` and treat it as the product-level source of truth. The repository name `whichwhy` is currently a working codename; do not perform naming or branding changes unless explicitly assigned.
+
 ## Non-negotiable rules
 
 - Correctness over cleverness. If the evidence is incomplete, preserve uncertainty instead of guessing.
