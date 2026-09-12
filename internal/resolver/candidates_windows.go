@@ -6,18 +6,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/adhamcodes/whichwhy/internal/processpath"
 )
 
 var defaultPathExt = []string{".COM", ".EXE", ".BAT", ".CMD"}
 
-func findCandidates(command string, directories []string, pathExtValue string) []Candidate {
+func findCandidates(command string, entries []processpath.Entry, pathExtValue string) []Candidate {
 	candidates := make([]Candidate, 0)
 	names := windowsCandidateNames(command, pathExtValue)
 
-	for index, directory := range directories {
-		if directory == "" {
-			directory = "."
-		}
+	for _, entry := range entries {
+		directory := entry.EffectiveValue()
 
 		for _, name := range names {
 			path := filepath.Join(directory, name)
@@ -28,7 +28,7 @@ func findCandidates(command string, directories []string, pathExtValue string) [
 
 			candidates = append(candidates, Candidate{
 				Path:           absolutePath(path),
-				DirectoryIndex: index,
+				DirectoryIndex: entry.Index - 1,
 			})
 		}
 	}

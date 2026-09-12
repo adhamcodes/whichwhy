@@ -3,22 +3,27 @@ package pathdiag
 import (
 	"os"
 	"path/filepath"
-	"strings"
+
+	"github.com/adhamcodes/whichwhy/internal/processpath"
 )
 
-// Entry is one PATH segment and the diagnostics observed for it.
+// Entry is one parsed PATH segment and its directory diagnostics. Value keeps
+// raw text; EffectiveValue is the actual Stat operand (including "." for empty
+// interpreted entries). Empty is independent of Directory/Missing/Error.
 type Entry struct {
-	Index       int
-	Value       string
-	Directory   bool
-	Missing     bool
-	Empty       bool
-	DuplicateOf int
-	Error       string
+	Index          int
+	Value          string
+	EffectiveValue string
+	Directory      bool
+	Missing        bool
+	Empty          bool
+	DuplicateOf    int
+	Error          string
 }
 
 // Report is the ordered diagnostic view of the process-visible PATH.
 type Report struct {
+	RawValue          string
 	Entries           []Entry
 	MissingCount      int
 	DuplicateCount    int
@@ -29,20 +34,27 @@ type Report struct {
 
 // Inspect examines PATH entries without modifying the environment or filesystem.
 func Inspect(value string) Report {
-	parts := strings.Split(value, string(os.PathListSeparator))
-	report := Report{Entries: make([]Entry, 0, len(parts))}
-	firstSeen := make(map[string]int, len(parts))
+	return InspectPath(processpath.Parse(value))
+}
 
-	for i, raw := range parts {
-		entry := Entry{Index: i + 1, Value: raw}
-		if raw == "" {
+// InspectPath consumes the same parsed evidence as candidate discovery without
+// reparsing, filtering, or renumbering entries. Only directory metadata is read.
+func InspectPath(path processpath.Path) Report {
+	report := Report{RawValue: path.Raw, Entries: make([]Entry, 0, len(path.Entries))}
+	firstSeen := make(map[string]int, len(path.Entries))
+
+	for _, part := range path.Entries {
+		entry := Entry{Index: part.Index, Value: part.Raw, EffectiveValue: part.EffectiveValue()}
+		if part.Value == "" {
 			entry.Empty = true
 			report.EmptyCount++
-			report.Entries = append(report.Entries, entry)
-			continue
 		}
 
-		key := normalizeForComparison(filepath.Clean(raw))
+		key := filepath.Clean(entry.EffectiveValue)
+		if absolute, err := filepath.Abs(entry.EffectiveValue); err == nil {
+			key = absolute
+		}
+		key = normalizeForComparison(key)
 		if first, ok := firstSeen[key]; ok {
 			entry.DuplicateOf = first
 			report.DuplicateCount++
@@ -50,7 +62,7 @@ func Inspect(value string) Report {
 			firstSeen[key] = entry.Index
 		}
 
-		info, err := os.Stat(raw)
+		info, err := os.Stat(entry.EffectiveValue)
 		switch {
 		case err == nil:
 			entry.Directory = info.IsDir()

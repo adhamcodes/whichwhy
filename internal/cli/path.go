@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/adhamcodes/whichwhy/internal/pathdiag"
+	"github.com/adhamcodes/whichwhy/internal/resolution"
 )
 
 type envLookup func(string) (string, bool)
@@ -24,13 +25,16 @@ func runPath(stdout, stderr io.Writer, lookup envLookup, inspect pathInspector) 
 
 func printPathReport(stdout io.Writer, report pathdiag.Report) {
 	fmt.Fprintln(stdout, "WhichWhy — PATH")
+	fmt.Fprintf(stdout, "\nPROCESS PARSING\n  %s (Go platform-native PATH parsing; shell search may differ).\n", resolution.ProcessPolicy)
+	fmt.Fprintf(stdout, "\nRAW PATH\n  %q\n", report.RawValue)
 	fmt.Fprintln(stdout, "\nPATH ENTRIES")
 
 	for _, entry := range report.Entries {
 		labels := make([]string, 0, 2)
-		switch {
-		case entry.Empty:
+		if entry.Empty {
 			labels = append(labels, "EMPTY")
+		}
+		switch {
 		case entry.Error != "":
 			labels = append(labels, "ERROR")
 		case entry.Missing:
@@ -46,10 +50,13 @@ func printPathReport(stdout io.Writer, report pathdiag.Report) {
 		}
 
 		value := entry.Value
-		if entry.Empty {
+		if value == "" {
 			value = "<empty>"
 		}
 		fmt.Fprintf(stdout, "  %2d. %-24s %s\n", entry.Index, strings.Join(labels, ", "), value)
+		if entry.Value != entry.EffectiveValue {
+			fmt.Fprintf(stdout, "      raw: %q -> effective: %q\n", entry.Value, entry.EffectiveValue)
+		}
 		if entry.Error != "" {
 			fmt.Fprintf(stdout, "      %s\n", entry.Error)
 		}
@@ -59,7 +66,7 @@ func printPathReport(stdout io.Writer, report pathdiag.Report) {
 	fmt.Fprintf(stdout, "  %d entries · %d missing · %d duplicate · %d empty · %d not-directory · %d errors\n",
 		len(report.Entries), report.MissingCount, report.DuplicateCount, report.EmptyCount, report.NotDirectoryCount, report.ErrorCount)
 	fmt.Fprintln(stdout, "\nWHY IT MATTERS")
-	fmt.Fprintln(stdout, "  PATH is searched in order. Missing, duplicate, or non-directory entries can make command resolution harder to understand.")
+	fmt.Fprintln(stdout, "  The process policy inspects entries in order; empty entries use the current directory. Missing, duplicate, or non-directory entries can make command resolution harder to understand.")
 	fmt.Fprintln(stdout, "\nSAFETY")
 	fmt.Fprintln(stdout, "  WhichWhy only inspected PATH. It did not change anything.")
 }

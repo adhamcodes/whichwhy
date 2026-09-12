@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -72,6 +73,11 @@ func assertReportPresentations(t *testing.T, r resolution.Report) {
 		}
 	}
 	if r.Scope == resolution.ProcessScope {
+		for _, c := range r.Candidates {
+			if !strings.Contains(human.String(), fmt.Sprintf("%s (PATH #%d)", c.Path, c.PathIndex)) {
+				t.Fatalf("human output lost candidate PATH identity: %s", &human)
+			}
+		}
 		for _, forbidden := range []string{"WINNER", "will run", "will execute"} {
 			if strings.Contains(human.String(), forbidden) {
 				t.Fatalf("process output overclaims: %s", &human)

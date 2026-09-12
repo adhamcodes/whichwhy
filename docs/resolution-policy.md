@@ -11,8 +11,9 @@ This policy names the existing algorithm; it does not repair its known gaps.
 
 1. Accept one nonempty command name. Reject names for which Go's platform-native
    `filepath.Base(name) != name`; explicit command paths remain unsupported.
-2. Read the process's `PATH` and `PATHEXT` using `os.Getenv`. Split PATH with
-   Go's platform-native `filepath.SplitList`. An entirely empty or unset PATH
+2. Read the process's `PATH` and `PATHEXT` using `os.Getenv`. Parse PATH once into
+   `internal/processpath.Path`, matching Go's platform-native `filepath.SplitList`
+   semantics while retaining raw segments. An entirely empty or unset PATH
    produces no entries. On Windows the delimiter is a semicolon and SplitList
    removes double quotes while respecting quoted delimiters. On Unix the
    delimiter is a colon. This is process parsing, not shell parsing.
@@ -41,6 +42,58 @@ Stat failures and skipped candidates are not fully retained by the existing
 collector. The report explicitly discloses that limitation. It also discloses
 unobserved shell-local state and possible differences in shell external search
 rules, including current-directory, empty-entry, and quoted-PATH behavior.
+
+## Correlated process PATH evidence (R2 / F2)
+
+`processpath.Path` retains the complete raw value and an ordered, unfiltered
+sequence of entries. Each entry carries its one-based index, raw segment, and
+interpreted value. One scanner determines both raw and interpreted boundaries;
+the resolver and PATH diagnostics do not maintain separate parsers. Tests compare
+the native parser with `filepath.SplitList`, including malformed quote sequences.
+
+On Windows, each double quote toggles delimiter protection. A semicolon inside
+quotes belongs to the same entry. All double quotes are removed from the
+interpreted value, including embedded or unmatched quotes; an unmatched quote
+protects remaining semicolons to the end of PATH. This is Go-compatible process
+policy behavior, not quote validation or a claim about shell behavior. Drive
+colons, backslashes, UNC spelling, whitespace, and single quotes are retained.
+On Unix, every colon is a delimiter and quotes are literal characters; semicolons
+are literal too. Neither platform trims whitespace or expands variables or `~`.
+
+An entirely empty value has zero entries. Leading, repeated, and trailing
+delimiters in a nonempty value retain empty entries; Windows `""` also yields an
+empty interpreted entry. `Entry.EffectiveValue()` maps only an empty interpreted
+value to `.`. Other values retain their spelling for filesystem inspection;
+relative and Windows drive-relative paths retain the existing platform-native
+`filepath.Join`/`filepath.Abs` behavior in the inspected process. Parsing neither
+changes the working directory nor inserts an implicit search directory.
+
+Candidate collection consumes these entries, retaining `entry.Index - 1` as its
+internal `DirectoryIndex`. The completed process resolution report retains the
+parsed PATH and exposes `DirectoryIndex + 1` as candidate `PathIndex`. Human
+command output labels external candidates with `PATH #N`; command JSON keeps its
+existing `path_index`. No index is recomputed from successful candidates.
+`pathdiag.InspectPath` can consume that same collected PATH without reparsing;
+standalone `path` parses its own process value using the same model. Correlation
+between separate invocations requires the same PATH, working directory, and
+relevant Windows drive context; filesystem observations are not an atomic snapshot.
+PowerShell reports have no process PATH attached and retain shell-supplied order.
+
+Diagnostics preserve every parsed entry, including missing directories, existing
+non-directories, and Stat errors. Empty entries are now inspected as `.` and can
+carry both `empty` and a filesystem state. Duplicate diagnostics compare cleaned
+absolute effective directory strings when `filepath.Abs` succeeds, falling back
+to cleaned effective strings on failure, case-insensitively on Windows. They
+always refer to the first original one-based entry, including empty, quoted, and
+relative spellings of that directory. They do not deduplicate the entry list or
+resolve symlinks. Directory duplicate labels are lexical directory comparisons;
+candidate deduplication remains the existing separate comparison of final file
+paths. Neither claims filesystem object identity. Failures to make comparison
+keys absolute are not newly structured here (F7 remains deferred).
+
+This fixes evidence correlation without changing resolver enumeration or selection,
+so `process-path-order-v1`, `process-external`, and `policy-only` remain unchanged.
+Process parsing does not establish cmd.exe, PowerShell, Bash, Zsh, or Fish truth.
 
 ## PowerShell evidence
 
@@ -79,8 +132,23 @@ Command inspection JSON uses schema version 2:
 Doctor also uses version 2, renames `command_discovery.path_winner` to
 `path_selected`, and includes scope, policy, and claim strength in
 `command_discovery`. Its top-level limitations come from the same report.
-PATH diagnostic JSON remains version 1. This focused private-schema change is
-not the final F10 compatibility contract.
+PATH diagnostic JSON remains version 1 with focused additive F2 fields:
+
+- `policy` names `process-path-order-v1` as the parsing context;
+- `raw_value` retains the complete original PATH;
+- each entry's `value` retains raw segment text, and new `effective_value` gives
+  the filesystem operand after quote removal and empty-to-dot interpretation.
+
+Existing indices now follow the shared parsed sequence: quoted Windows semicolons
+no longer create phantom entries. An entirely empty PATH now has zero entries;
+an unset PATH still returns the existing error/exit status with an empty list.
+`empty` means an empty interpreted value, independently of filesystem status.
+Duplicate counts now include equivalent empty/relative/quoted directory operands.
+Human PATH output uses the same report, shows raw PATH plus changed raw/effective
+entry pairs, combines EMPTY with filesystem status, and names the process parsing
+context and shell limitation. This is a focused correction of diagnostic evidence,
+not the final F10 compatibility contract. Command and doctor JSON remain version 2;
+PowerShell JSON is unchanged.
 
 ## Controlled Windows evidence
 
@@ -99,14 +167,25 @@ marker absent. Only the oracle executes the known fixture. `/D` disables cmd
 AutoRun and the child environment omits `NoDefaultCurrentDirectoryInExePath` so
 the tested default search behavior is controlled. Tests never invoke an
 arbitrary inspected command. This fixture demonstrates the need for scoping;
-it does not establish general cmd.exe support or reconcile PATH parsers.
+it does not establish general cmd.exe support.
+
+`TestWindowsQuotedPATHCorrelation` constructs `".../quoted;directory";.../last`:
+the old raw delimiter split yields three entries while the R1 resolver sees two.
+It was run against the pre-R2 implementation and failed with two candidates versus
+three diagnostic entries. After R2, both candidates correlate with their actual
+directory entries #1 and #2, with the original quote text retained. Further
+Windows coverage combines quoted relative directories, quoted and literal empty
+entries, absolute duplicates, and trailing empties. Cross-platform coverage checks
+empty PATH, repeated empty segments, relative/absolute duplicate order, raw
+reconstruction, human/JSON agreement, and passive inspection. These tests execute
+no inspected fixtures; the existing controlled cmd oracle remains separate.
 
 The existing PowerShell 5.1 and 7 oracle scripts still compare the complete
 ordered list against the real shell and run the passive-inspection suite.
 
 ## Deferred work
 
-F2 PATH parser/diagnostic reconciliation, F4 dotted Windows names, F5 Unix user
+F4 dotted Windows names, F5 Unix user
 permissions, F6 PowerShell 5.1 transport, F7 observation retention, F8 broader
 oracles, F9 inspection routing/UX, and F10 final JSON compatibility remain
 separate missions. Naming, other shells, and package/version-manager intelligence
