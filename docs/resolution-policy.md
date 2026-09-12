@@ -8,7 +8,8 @@ is `policy-only`. These identifiers are intentionally tested as literal values.
 ## Exact standalone policy
 
 This policy names the implemented algorithm, including the focused R2 PATH
-evidence and R3 dotted-name corrections; it does not establish shell equivalence.
+evidence, R3 dotted-name and R4 Unix eligibility corrections; it does not establish
+shell equivalence.
 
 1. Accept one nonempty command name. Reject names for which Go's platform-native
    `filepath.Base(name) != name`; explicit command paths remain unsupported.
@@ -34,8 +35,9 @@ evidence and R3 dotted-name corrections; it does not establish shell equivalence
    and position. Directory order takes precedence over this name order.
 5. Use `os.Stat` (following symlinks). On Windows accept any successfully observed
    non-directory candidate. On Unix accept successfully observed non-directory
-   candidates with any of the `0111` permission bits set. Neither filter proves
-   that the invoking user can successfully execute the candidate.
+   candidates eligible under the effective-process-identity mode-class rule below.
+   Neither filter proves that the invoking user can successfully execute the
+   candidate.
 6. Return absolute candidate paths when `filepath.Abs` succeeds, otherwise cleaned
    paths. Remove duplicate cleaned path strings, case-insensitively on Windows,
    keeping the first occurrence and its original PATH index. Do not resolve
@@ -123,7 +125,8 @@ policy, claim strength, and limitations. Claim strength describes the evidence
 class, not a probability or a promise of execution.
 
 Exit status 0 means a candidate was selected within the reported scope; 1 means
-no candidate was observed; 2 remains an operational/usage error. Doctor retains
+no candidate was observed; 2 remains an operational/usage error (including Unix
+identity or ownership metadata unavailable for eligibility evaluation). Doctor retains
 its existing warning/status rules and executable-identity deduplication, but
 consumes a process report for selection and reports its claim and limitations.
 
@@ -256,9 +259,119 @@ absent. Only the cmd oracle invokes the explicitly constructed harmless fixtures
 and it verifies their identifying output and marker. Generic inspection gained
 no execution probe, shell invocation, or presentation-side precedence logic.
 
+## Unix user-aware eligibility (R4 / F5)
+
+This is a **mode-class policy**, not an OS access check or execution probe. Before
+enumerating a nonempty parsed PATH, collect `os.Geteuid()`, `os.Getegid()` and
+`os.Getgroups()` once for this resolution. These are the WhichWhy process's
+effective UID, effective primary GID, and supplementary numeric group IDs. They
+are not the real IDs, login name, environment variables, account-database group
+list, or an unobserved parent shell's credentials. No identity is changed. With
+set-ID invocation, the effective identity is intentional. Empty PATH needs no
+identity collection because it supplies no candidate operands.
+
+For each successfully statted non-directory operand, use the target's numeric
+owner UID, group GID and permission mode from that same `os.Stat` result:
+
+1. Effective UID 0: accept if any owner, group or other execute bit is set. With
+   no execute bit, reject even for root. This is the traditional superuser mode
+   rule for regular executables, not proof of kernel superuser privileges.
+2. Otherwise, if effective UID equals file UID, only `0100` governs eligibility.
+   A missing owner execute bit denies; never fall through to group or other.
+3. Otherwise, if file GID equals effective GID **or any** ID in `os.Getgroups()`,
+   only `0010` governs. A missing group execute bit denies; never fall through to
+   other. Duplicate groups do not change the result, and effective GID is checked
+   separately whether or not `Getgroups` includes it.
+4. Only when neither owner nor group class applies does `0001` govern.
+
+Read/write, setuid/setgid and sticky bits do not grant execute eligibility.
+The existing non-directory filter remains; this is not a new file-format or
+regular-file validity check. `os.Stat` still follows symlinks, including for
+UID/GID/mode; broken links yield the existing Stat skip. Candidate paths retain
+the link spelling. Lexical deduplication, first-producing-entry order, original
+PATH indices and raw PATH evidence are unchanged.
+
+Group collection failure aborts with a wrapped operational error, preserving its
+cause; it is never interpreted as an empty group list. Missing Unix ownership
+metadata likewise aborts with the candidate path in the error. No completed
+no-candidate report is produced on either failure. This uses the existing error
+channel without introducing F7's structured per-candidate observation model.
+Existing Stat failures/skips still have the existing explicit report limitation.
+
+### What this proves, and alternatives considered
+
+It proves eligibility under the recorded policy using observed identity and mode
+facts. It does **not** prove kernel access or successful `exec`:
+
+- ACLs can make actual access differ in either direction; in particular, POSIX
+  ACL group bits may represent an ACL mask rather than the owning group's grant.
+- A `noexec` mount can deny execution despite eligible mode bits. No mount table
+  or ancestor permission analysis is added; Stat success is not execution access.
+- Linux filesystem UID/GID can differ from effective IDs, and capabilities can
+  grant or remove the privileges this traditional UID-0 policy assumes. macOS
+  extended/directory-service group membership and other platform protections are
+  not modeled by the numeric process group list. These are disclosed limits.
+- Identity collection, Stat calls and later invocation are not atomic. Changes
+  to credentials, groups, permissions, symlink targets or files can invalidate
+  the observations. Shebang/interpreter availability, interpreter read access,
+  executable format and other kernel restrictions can also prevent execution.
+
+`access(X_OK)` was rejected because it uses real identity semantics; Apple's
+archived documentation also cautions that privileged X_OK success need not imply
+execute bits. POSIX `faccessat(..., AT_EACCESS)` specifies effective-ID checks,
+but actual availability and wrapper behavior matter. Linux `faccessat2` supports
+flags in-kernel; older faccessat implementations may emulate them with mode bits
+and miss ACLs. The installed Go 1.27.1 `syscall.Faccessat` has a Linux fallback,
+and no corresponding Darwin function. Adding `golang.org/x/sys/unix` or cgo would
+require platform-specific handling and probe-error semantics without eliminating
+races or execution failures. An explicitly limited, dependency-free mode policy
+is the smaller truthful F5 change. `syscall.Stat_t` is used only to read UID/GID
+already supplied by `os.Stat`; no candidate is opened for execution.
+
+Semantic references checked before implementation:
+
+- [Linux pathname permission and privilege rules](https://man7.org/linux/man-pages/man7/path_resolution.7.html).
+- [POSIX access/faccessat identity semantics](https://pubs.opengroup.org/onlinepubs/9799919799/functions/access.html)
+  and [Linux access/faccessat caveats](https://man7.org/linux/man-pages/man2/access.2.html).
+- [Apple access documentation](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/access.2.html)
+  and [XNU vnode_authorize_posix / vnode authorization](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/vfs/vfs_subr.c),
+  including the regular-file root execute-bit requirement.
+
+### Focused verification boundary
+
+Portable tests enumerate all 512 permission modes for owner, effective group,
+supplementary group, duplicate groups, other and root identities, including
+special bits and explicit pre-F5 false positives. Unix-native tests collect real
+effective credentials and test exact modes `0100`, `0010`, `0001`, `0011`, `0111`
+and `0000` through both direct and symlink candidates. Failure tests ensure missing
+groups/ownership never become definitive ineligibility.
+
+`go test ./internal/cli -run TestUnixOwnerEligibilityOracle -count=1 -v` creates
+a disposable, current-user-owned `/bin/sh` script. Each execute-bit pattern above
+is combined with owner read (`0400`) so interpreter read access does not obscure
+execute permission. Human and JSON inspection must leave its marker absent;
+only explicit test-oracle execution may write it. A successful `0700` control
+establishes basic fixture execution first. Owner group/other-only modes pass the
+literal pre-F5 predicate but must be rejected by inspection and fail direct
+controlled execution with EACCES. Root skips this unprivileged assertion, and
+an unusable control or different fixture owner produces an explanatory skip.
+Unexpected oracle disagreement is a failure, not silently skipped.
+
+PATH/report tests combine rejected entries, duplicates and a symlink and retain
+one-based correlation, policy/scope/claim strength and shared human/JSON limits.
+The existing Ubuntu/macOS CI `go test ./...` jobs automatically include all these
+Unix tests. The Windows development host runs the pure model and Windows suites;
+cross-compilation is **not native Unix runtime verification**. Linux/macOS native
+execution is **PENDING REMOTE CI** for this mission. The `unix` build constraint
+uses APIs shared by Linux and Darwin; other Unix targets gain no runtime support
+claim, and non-Unix/non-Windows targets return an explicit unsupported error.
+
+R1/R2/R3 identifiers and Windows behavior remain unchanged. These fixtures do not
+establish Bash, Zsh or Fish equivalence; the evidence remains process-policy only.
+
 ## Deferred work
 
-F5 Unix user permissions, F6 PowerShell 5.1 transport, F7 observation retention, F8 broader
+F6 PowerShell 5.1 transport, F7 observation retention, F8 broader
 oracles, F9 inspection routing/UX, and F10 final JSON compatibility remain
 separate missions. Naming, other shells, and package/version-manager intelligence
 are outside this change. Exact shell parity for recognized-suffix fallback,

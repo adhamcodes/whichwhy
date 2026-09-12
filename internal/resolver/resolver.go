@@ -45,7 +45,11 @@ func resolveExternal(command, pathValue, pathExtValue string) (Result, error) {
 	}
 
 	path := processpath.Parse(pathValue)
-	candidates := distinctCandidatePaths(findCandidates(command, path.Entries, pathExtValue))
+	candidates, err := findCandidates(command, path.Entries, pathExtValue)
+	if err != nil {
+		return Result{}, err
+	}
+	candidates = distinctCandidatePaths(candidates)
 	return Result{Command: command, Path: path, Candidates: candidates}, nil
 }
 
