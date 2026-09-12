@@ -30,14 +30,6 @@ type Evidence struct {
 	Matches []Match
 }
 
-// Winner returns the first match PowerShell reported.
-func (e Evidence) Winner() (Match, bool) {
-	if len(e.Matches) == 0 {
-		return Match{}, false
-	}
-	return e.Matches[0], true
-}
-
 // DecodeEvidence converts the bridge arguments into typed PowerShell evidence.
 func DecodeEvidence(command, version, edition string, encodedRecords []string) (Evidence, error) {
 	if command == "" {

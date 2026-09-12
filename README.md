@@ -1,6 +1,6 @@
 # WhichWhy
 
-> Know exactly which command will run — and why.
+> Inspect command-resolution evidence, alternatives, and uncertainty.
 
 WhichWhy is a local, open-source command-resolution debugger for developers. It is being built to answer a simple question that is often surprisingly difficult to diagnose:
 
@@ -20,14 +20,18 @@ whichwhy python
 
 WhichWhy is designed to explain:
 
-- what command or executable will win resolution;
+- what command the observed shell selects, or which candidate a named process policy selects;
 - where that target comes from;
 - why it wins over other candidates;
 - which other candidates are shadowed;
 - whether the resolution state looks suspicious;
 - safe next steps when a likely configuration problem is detected.
 
-The first release is intended to cover the common command-resolution rules used by Windows, macOS, and Linux shells, with shell-aware integration where live shell state is required for an accurate answer.
+Standalone inspection uses `process-path-order-v1`, a process-visible external
+search policy. Its selected candidate may differ from what your shell executes.
+The experimental PowerShell bridge reports observations from the current loaded
+session. Both modes disclose their scope, claim strength, and limitations; see
+[Resolution claims](docs/resolution-policy.md) for the exact policy and JSON fields.
 
 ## Design principles
 

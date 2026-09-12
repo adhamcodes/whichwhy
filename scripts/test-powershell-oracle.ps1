@@ -30,7 +30,11 @@ function Assert-WhichWhyMatchesPowerShell([string]$phase) {
     }
     $doc = $jsonText | ConvertFrom-Json
 
-    if ($null -eq $doc.winner) {
+    if ($doc.schema_version -ne 2 -or $doc.resolution_scope -ne 'powershell-loaded-session' -or $doc.policy -ne 'powershell-loaded-session-order-v1' -or $doc.claim_strength -ne 'shell-observed') {
+        throw "[$phase] WhichWhy lost its shell-scoped claim"
+    }
+
+    if ($null -eq $doc.selected) {
         throw "[$phase] WhichWhy returned no winner"
     }
     if ([int]$doc.candidates.Count -ne [int]$oracle.Count) {
@@ -65,8 +69,8 @@ function Assert-WhichWhyMatchesPowerShell([string]$phase) {
     }
 
     $expectedWinnerKind = Convert-CommandTypeToKind ([string]$oracle[0].CommandType)
-    if ([string]$doc.winner.kind -ne $expectedWinnerKind) {
-        throw "[$phase] winner mismatch: WhichWhy=$($doc.winner.kind) PowerShell=$expectedWinnerKind"
+    if ([string]$doc.selected.kind -ne $expectedWinnerKind) {
+        throw "[$phase] winner mismatch: WhichWhy=$($doc.selected.kind) PowerShell=$expectedWinnerKind"
     }
 
     Write-Host "PASS [$phase] winner=$expectedWinnerKind candidates=$($oracle.Count)"

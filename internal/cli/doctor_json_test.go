@@ -35,10 +35,10 @@ func TestRunDoctorJSONReportsConsistentDiscovery(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
 		t.Fatalf("stdout is not valid JSON: %v\n%s", err, stdout.String())
 	}
-	if doc.SchemaVersion != 1 || doc.Kind != "doctor" || doc.Status != "ok" || doc.Version != "1.2.3" {
+	if doc.SchemaVersion != 2 || doc.Kind != "doctor" || doc.Status != "ok" || doc.Version != "1.2.3" {
 		t.Fatalf("unexpected doctor JSON metadata: %#v", doc)
 	}
-	if doc.RunningExecutable != current || doc.CommandDiscovery.State != "current" || doc.CommandDiscovery.PathWinner != current {
+	if doc.RunningExecutable != current || doc.CommandDiscovery.State != "current" || doc.CommandDiscovery.PathSelected != current {
 		t.Fatalf("unexpected doctor discovery: %#v", doc)
 	}
 	if doc.CommandDiscovery.OtherCandidates == nil || len(doc.CommandDiscovery.OtherCandidates) != 0 {
@@ -75,7 +75,7 @@ func TestRunDoctorJSONReportsDistinctConflict(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
 		t.Fatalf("stdout is not valid JSON: %v\n%s", err, stdout.String())
 	}
-	if doc.Status != "warning" || doc.CommandDiscovery.State != "different" || doc.CommandDiscovery.PathWinner != winner {
+	if doc.Status != "warning" || doc.CommandDiscovery.State != "different" || doc.CommandDiscovery.PathSelected != winner {
 		t.Fatalf("unexpected conflict JSON: %#v", doc)
 	}
 	if got, want := len(doc.CommandDiscovery.OtherCandidates), 1; got != want || doc.CommandDiscovery.OtherCandidates[0] != other {

@@ -43,7 +43,7 @@ func TestRunVersion(t *testing.T) {
 	}
 }
 
-func TestRunCommandShowsExternalWinnerAndShadowedCandidates(t *testing.T) {
+func TestRunCommandShowsPolicySelectionAndAlternatives(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	resolve := func(command string) (resolver.Result, error) {
@@ -62,7 +62,7 @@ func TestRunCommandShowsExternalWinnerAndShadowedCandidates(t *testing.T) {
 		t.Fatalf("run() exit code = %d, want 0", code)
 	}
 	output := stdout.String()
-	for _, want := range []string{"EXTERNAL COMMAND WINNER", `/first/python`, "OTHER EXTERNAL CANDIDATES", `/second/python`, "CURRENT LIMIT"} {
+	for _, want := range []string{"PROCESS POLICY SELECTED CANDIDATE", `/first/python`, "OTHER CANDIDATES UNDER THIS POLICY", `/second/python`, "CURRENT LIMIT"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("stdout = %q, want %q", output, want)
 		}

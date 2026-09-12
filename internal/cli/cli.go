@@ -7,11 +7,12 @@ import (
 	"strings"
 
 	"github.com/adhamcodes/whichwhy/internal/pathdiag"
+	"github.com/adhamcodes/whichwhy/internal/resolution"
 	"github.com/adhamcodes/whichwhy/internal/resolver"
 	ps "github.com/adhamcodes/whichwhy/internal/shell/powershell"
 )
 
-const usage = `WhichWhy — know exactly which command will run, and why.
+const usage = `WhichWhy — inspect command-resolution evidence and its limits.
 
 Usage:
   whichwhy <command>
@@ -106,35 +107,43 @@ func run(args []string, stdout, stderr io.Writer, version string, resolve extern
 		fmt.Fprintf(stderr, "whichwhy: %v\n", err)
 		return 2
 	}
+	report := resolution.ProcessExternal(result)
 	if jsonOutput {
-		return printExternalJSON(stdout, stderr, result)
+		return printCommandJSON(stdout, stderr, report)
 	}
-	return printExternalResult(stdout, result)
+	return printCommandReport(stdout, report)
 }
 
-func printExternalResult(stdout io.Writer, result resolver.Result) int {
-	fmt.Fprintf(stdout, "WhichWhy — %s\n\n", result.Command)
-
-	winner, ok := result.Winner()
-	if !ok {
-		fmt.Fprintln(stdout, "No external command candidate was found in the current search path.")
-		fmt.Fprintln(stdout, "\nShell aliases, functions, built-ins, cmdlets, and command caches are not inspected yet.")
-		return 1
-	}
-
-	fmt.Fprintln(stdout, "EXTERNAL COMMAND WINNER")
-	fmt.Fprintf(stdout, "  %s\n", winner.Path)
-
-	if len(result.Candidates) > 1 {
-		fmt.Fprintln(stdout, "\nOTHER EXTERNAL CANDIDATES")
-		for _, candidate := range result.Candidates[1:] {
-			fmt.Fprintf(stdout, "  %s\n", candidate.Path)
+func printCommandReport(stdout io.Writer, report resolution.Report) int {
+	fmt.Fprintf(stdout, "WhichWhy — %s\n\n", report.Command)
+	if report.Selected == nil {
+		fmt.Fprintln(stdout, report.NoCandidateReason)
+	} else {
+		if report.Scope == resolution.PowerShellScope {
+			fmt.Fprintln(stdout, "POWERSHELL WINNER (LOADED SESSION)")
+		} else {
+			fmt.Fprintln(stdout, "PROCESS POLICY SELECTED CANDIDATE")
 		}
+		printCommandCandidate(stdout, *report.Selected)
+		if len(report.Alternatives) > 0 {
+			fmt.Fprintln(stdout, "\nOTHER CANDIDATES UNDER THIS POLICY")
+			for _, candidate := range report.Alternatives {
+				printCommandCandidate(stdout, candidate)
+			}
+		}
+		fmt.Fprintf(stdout, "\nWHY\n  %s\n", report.SelectionReason)
 	}
+	printClaim(stdout, report)
+	return report.ExitCode()
+}
 
-	fmt.Fprintln(stdout, "\nWHY")
-	fmt.Fprintln(stdout, "  This candidate appears first in the process-visible external command search order.")
-	fmt.Fprintln(stdout, "\nCURRENT LIMIT")
-	fmt.Fprintln(stdout, "  Shell-local aliases, functions, built-ins, cmdlets, and command caches are not inspected yet.")
-	return 0
+func printClaim(stdout io.Writer, report resolution.Report) {
+	fmt.Fprintf(stdout, "\nRESOLUTION SCOPE\n  %s\nPOLICY\n  %s\nCLAIM STRENGTH\n  %s\n", report.Scope, report.Policy, report.ClaimStrength)
+	if report.Shell != nil {
+		fmt.Fprintf(stdout, "\nSHELL\n  %s %s (%s)\n", report.Shell.Name, report.Shell.Version, report.Shell.Edition)
+	}
+	fmt.Fprintln(stdout, "\nCURRENT LIMITS")
+	for _, limitation := range report.Limitations {
+		fmt.Fprintf(stdout, "  %s\n", limitation)
+	}
 }

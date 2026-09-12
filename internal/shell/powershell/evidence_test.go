@@ -22,10 +22,7 @@ func TestDecodeEvidencePreservesPowerShellOrder(t *testing.T) {
 		t.Fatalf("match count = %d, want 3", len(evidence.Matches))
 	}
 
-	winner, ok := evidence.Winner()
-	if !ok {
-		t.Fatal("Winner() reported no winner")
-	}
+	winner := evidence.Matches[0]
 	if winner.CommandType != "Alias" || winner.AliasTarget != "Get-Date" {
 		t.Fatalf("winner = %#v, want wwprobe alias to Get-Date", winner)
 	}
@@ -42,13 +39,13 @@ func TestDecodeEvidenceRejectsMalformedRecord(t *testing.T) {
 	}
 }
 
-func TestWinnerReturnsFalseWithoutMatches(t *testing.T) {
+func TestDecodeEmptyEvidencePreservesNoMatches(t *testing.T) {
 	evidence, err := DecodeEvidence("missing", "5.1", "Desktop", nil)
 	if err != nil {
 		t.Fatalf("DecodeEvidence() error = %v", err)
 	}
-	if _, ok := evidence.Winner(); ok {
-		t.Fatal("Winner() reported a winner for empty evidence")
+	if len(evidence.Matches) != 0 {
+		t.Fatal("DecodeEvidence fabricated a match for empty evidence")
 	}
 }
 
