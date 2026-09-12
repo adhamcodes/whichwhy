@@ -25,13 +25,22 @@ The standalone binary can inspect process-visible state directly. Shell-local st
 
 Turn collected evidence into an ordered set of candidates and a resolution result. Platform- and shell-specific rules must remain explicit rather than being hidden in presentation code.
 
-The core model should be able to represent:
+The completed `internal/resolution.Report` represents:
 
-- the winning candidate;
-- shadowed candidates;
+- the selected candidate under an explicit named policy;
+- ordered candidates and alternatives under that policy;
 - candidate type and source;
 - ordering and precedence evidence;
 - uncertainty when a rule cannot be evaluated safely.
+
+The standalone collector in `internal/resolver` supplies ordered process-visible
+external evidence. `resolution.ProcessExternal` applies `process-path-order-v1`
+and records a `policy-only` claim. The PowerShell bridge supplies shell-observed
+loaded-session evidence; `resolution.PowerShell` preserves that scope and order.
+The evidence types expose no generic winner accessor. Both human and JSON
+command renderers consume the completed report, as do doctor's discovery
+diagnostics and presentation. See [Resolution claims](resolution-policy.md) for
+the exact policy, limitations, and focused JSON schema change.
 
 ### 3. Diagnostics
 
@@ -68,10 +77,16 @@ Examples of scenario classes include:
 - duplicate or missing search-path entries;
 - Python and Node toolchain conflicts.
 
-A disagreement between WhichWhy and a supported shell is a product bug, even when the output looks plausible.
+A disagreement within a claimed supported shell scope is a product bug, even
+when the output looks plausible. A standalone process policy can intentionally
+differ from a shell: its output must disclose the scope and uncertainty. A
+controlled cmd.exe disagreement test protects this distinction without claiming
+general cmd.exe support.
 
 ## Initial support target
 
-The V1 target is Windows, macOS, and Linux, with focused support for PowerShell, cmd.exe executable resolution, Bash, Zsh, and Fish.
+Standalone inspection provides the documented process policy. The experimental
+PowerShell bridge supplies loaded-session observations. Other shell support is
+future work, not implied by standalone candidate enumeration.
 
 Support should be claimed only after the corresponding oracle tests exist and pass.

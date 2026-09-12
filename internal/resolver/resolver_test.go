@@ -35,13 +35,6 @@ func TestResolveExternalPreservesDirectoryOrder(t *testing.T) {
 		t.Fatalf("second candidate = %q, want %q", result.Candidates[1].Path, wantSecond)
 	}
 
-	winner, ok := result.Winner()
-	if !ok {
-		t.Fatal("Winner() reported no winner")
-	}
-	if winner.Path != wantFirst {
-		t.Fatalf("winner = %q, want %q", winner.Path, wantFirst)
-	}
 }
 
 func TestResolveExternalCollapsesRepeatedIdenticalCandidatePath(t *testing.T) {
@@ -69,9 +62,6 @@ func TestResolveExternalReturnsNoCandidatesWhenCommandIsMissing(t *testing.T) {
 	}
 	if len(result.Candidates) != 0 {
 		t.Fatalf("candidate count = %d, want 0", len(result.Candidates))
-	}
-	if _, ok := result.Winner(); ok {
-		t.Fatal("Winner() reported a winner for a missing command")
 	}
 }
 

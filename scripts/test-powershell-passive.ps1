@@ -69,11 +69,12 @@ function Assert-Inspection([string]$name, [bool]$loaded, [string]$kind = '') {
     if ($variablesBefore -cne (Get-GlobalVariableNames)) { throw 'Collector leaked global variables' }
     $doc = ($text -join "`n") | ConvertFrom-Json
     if ($doc.resolution_scope -ne 'powershell-loaded-session') { throw 'Unexpected resolution scope' }
+    if ($doc.policy -ne 'powershell-loaded-session-order-v1' -or $doc.claim_strength -ne 'shell-observed') { throw 'Unexpected shell claim' }
     if ($doc.limitations -notcontains 'Unloaded module auto-loading is not modeled yet.') { throw 'Missing autoload limitation' }
     if ($kind) {
-        if ($code -ne 0 -or $doc.winner.kind -ne $kind) { throw "Wrong loaded winner for $name" }
-        if ($name -eq $probe -and $doc.winner.source -ne $moduleName) { throw 'Wrong module source' }
-    } elseif ($code -ne 1 -or $null -ne $doc.winner -or $doc.candidates.Count -ne 0) {
+        if ($code -ne 0 -or $doc.selected.kind -ne $kind) { throw "Wrong loaded winner for $name" }
+        if ($name -eq $probe -and $doc.selected.source -ne $moduleName) { throw 'Wrong module source' }
+    } elseif ($code -ne 1 -or $null -ne $doc.selected -or $doc.candidates.Count -ne 0) {
         throw "Unloaded command fabricated a winner for $name"
     }
     $human = @(whichwhy $name) -join "`n"

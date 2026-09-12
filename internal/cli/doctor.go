@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/adhamcodes/whichwhy/internal/resolution"
 	"github.com/adhamcodes/whichwhy/internal/resolver"
 )
 
@@ -27,7 +28,7 @@ type doctorReport struct {
 	Arch              string
 	RunningExecutable string
 	Discovery         doctorDiscovery
-	Candidates        []resolver.Candidate
+	Resolution        resolution.Report
 	Status            int
 }
 
@@ -43,20 +44,22 @@ func inspectDoctor(version string, executable executableLocator, resolve externa
 		return doctorReport{}, fmt.Errorf("inspect command discovery: %w", err)
 	}
 	candidates := distinctExecutableCandidates(result.Candidates)
+	result.Candidates = candidates
+	resolved := resolution.ProcessExternal(result)
 
 	report := doctorReport{
 		Version:           version,
 		OS:                runtime.GOOS,
 		Arch:              runtime.GOARCH,
 		RunningExecutable: current,
-		Candidates:        candidates,
+		Resolution:        resolved,
 	}
 
 	switch {
-	case len(candidates) == 0:
+	case resolved.Selected == nil:
 		report.Discovery = doctorDiscoveryMissing
 		report.Status = 1
-	case sameExecutable(current, candidates[0].Path):
+	case sameExecutable(current, resolved.Selected.Path):
 		report.Discovery = doctorDiscoveryCurrent
 	default:
 		report.Discovery = doctorDiscoveryDifferent
@@ -86,18 +89,18 @@ func printDoctorResult(stdout io.Writer, report doctorReport) int {
 
 	switch report.Discovery {
 	case doctorDiscoveryMissing:
-		fmt.Fprintln(stdout, "  WARNING  'whichwhy' is not discoverable through the process-visible PATH.")
+		fmt.Fprintln(stdout, "  WARNING  No 'whichwhy' candidate was observed under the process policy.")
 	case doctorDiscoveryCurrent:
-		fmt.Fprintln(stdout, "  OK       PATH resolves 'whichwhy' to this running executable.")
+		fmt.Fprintln(stdout, "  OK       The process policy selects this running executable for 'whichwhy'.")
 	case doctorDiscoveryDifferent:
-		fmt.Fprintln(stdout, "  WARNING  PATH resolves 'whichwhy' to a different executable.")
-		fmt.Fprintf(stdout, "           PATH winner: %s\n", report.Candidates[0].Path)
+		fmt.Fprintln(stdout, "  WARNING  The process policy selects a different executable for 'whichwhy'.")
+		fmt.Fprintf(stdout, "           Policy candidate: %s\n", report.Resolution.Selected.Path)
 		fmt.Fprintf(stdout, "           Running:     %s\n", report.RunningExecutable)
 	}
 
-	if len(report.Candidates) > 1 {
+	if len(report.Resolution.Alternatives) > 0 {
 		fmt.Fprintln(stdout, "\nOTHER WHICHWHY CANDIDATES")
-		for _, candidate := range report.Candidates[1:] {
+		for _, candidate := range report.Resolution.Alternatives {
 			fmt.Fprintf(stdout, "  %s\n", candidate.Path)
 		}
 	}
@@ -109,6 +112,7 @@ func printDoctorResult(stdout io.Writer, report doctorReport) int {
 		fmt.Fprintln(stdout, "  WARNING — WhichWhy is running, but its command discovery may be incomplete or ambiguous.")
 	}
 
+	printClaim(stdout, report.Resolution)
 	fmt.Fprintln(stdout, "\nSAFETY")
 	fmt.Fprintln(stdout, "  Doctor only inspected the running executable and command search results. It changed nothing.")
 	return report.Status

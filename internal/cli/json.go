@@ -7,11 +7,11 @@ import (
 	"strings"
 
 	"github.com/adhamcodes/whichwhy/internal/pathdiag"
-	"github.com/adhamcodes/whichwhy/internal/resolver"
-	ps "github.com/adhamcodes/whichwhy/internal/shell/powershell"
+	"github.com/adhamcodes/whichwhy/internal/resolution"
 )
 
 const jsonSchemaVersion = 1
+const resolutionJSONSchemaVersion = 2
 
 type jsonShell struct {
 	Name    string `json:"name"`
@@ -29,14 +29,17 @@ type jsonCandidate struct {
 }
 
 type jsonDocument struct {
-	SchemaVersion   int             `json:"schema_version"`
-	Command         string          `json:"command"`
-	ResolutionScope string          `json:"resolution_scope"`
-	Shell           *jsonShell      `json:"shell,omitempty"`
-	Winner          *jsonCandidate  `json:"winner"`
-	Candidates      []jsonCandidate `json:"candidates"`
-	WinnerReason    string          `json:"winner_reason,omitempty"`
-	Limitations     []string        `json:"limitations"`
+	SchemaVersion     int             `json:"schema_version"`
+	Command           string          `json:"command"`
+	ResolutionScope   string          `json:"resolution_scope"`
+	Policy            string          `json:"policy"`
+	ClaimStrength     string          `json:"claim_strength"`
+	Shell             *jsonShell      `json:"shell,omitempty"`
+	Selected          *jsonCandidate  `json:"selected"`
+	Candidates        []jsonCandidate `json:"candidates"`
+	SelectionReason   string          `json:"selection_reason,omitempty"`
+	NoCandidateReason string          `json:"no_candidate_reason,omitempty"`
+	Limitations       []string        `json:"limitations"`
 }
 
 type jsonPathEntry struct {
@@ -74,7 +77,10 @@ type jsonPlatform struct {
 
 type jsonDoctorDiscovery struct {
 	State           string   `json:"state"`
-	PathWinner      string   `json:"path_winner,omitempty"`
+	PathSelected    string   `json:"path_selected,omitempty"`
+	ResolutionScope string   `json:"resolution_scope"`
+	Policy          string   `json:"policy"`
+	ClaimStrength   string   `json:"claim_strength"`
 	OtherCandidates []string `json:"other_candidates"`
 }
 
@@ -89,28 +95,13 @@ type jsonDoctorDocument struct {
 	Limitations       []string            `json:"limitations"`
 }
 
-func printExternalJSON(stdout, stderr io.Writer, result resolver.Result) int {
-	doc := externalJSONDocument(result)
+func printCommandJSON(stdout, stderr io.Writer, report resolution.Report) int {
+	doc := commandJSONDocument(report)
 	if err := writeJSON(stdout, doc); err != nil {
 		fmt.Fprintf(stderr, "whichwhy: write JSON: %v\n", err)
 		return 2
 	}
-	if doc.Winner == nil {
-		return 1
-	}
-	return 0
-}
-
-func printPowerShellJSON(stdout, stderr io.Writer, evidence ps.Evidence) int {
-	doc := powerShellJSONDocument(evidence)
-	if err := writeJSON(stdout, doc); err != nil {
-		fmt.Fprintf(stderr, "whichwhy: write JSON: %v\n", err)
-		return 2
-	}
-	if doc.Winner == nil {
-		return 1
-	}
-	return 0
+	return report.ExitCode()
 }
 
 func runPathJSON(stdout, stderr io.Writer, lookup envLookup, inspect pathInspector) int {
@@ -153,65 +144,34 @@ func runDoctorJSON(stdout, stderr io.Writer, version string, executable executab
 	return report.Status
 }
 
-func externalJSONDocument(result resolver.Result) jsonDocument {
-	candidates := make([]jsonCandidate, 0, len(result.Candidates))
-	for _, candidate := range result.Candidates {
-		candidates = append(candidates, jsonCandidate{
-			Kind:      "external",
-			Path:      candidate.Path,
-			PathIndex: candidate.DirectoryIndex + 1,
-		})
+func commandJSONDocument(report resolution.Report) jsonDocument {
+	candidates := make([]jsonCandidate, 0, len(report.Candidates))
+	for _, candidate := range report.Candidates {
+		candidates = append(candidates, candidateJSON(candidate))
 	}
-
 	doc := jsonDocument{
-		SchemaVersion:   jsonSchemaVersion,
-		Command:         result.Command,
-		ResolutionScope: "process-external",
-		Candidates:      candidates,
-		Limitations: []string{
-			"Shell-local aliases, functions, built-ins, cmdlets, and command caches are not inspected.",
-		},
+		SchemaVersion:     resolutionJSONSchemaVersion,
+		Command:           report.Command,
+		ResolutionScope:   report.Scope,
+		Policy:            report.Policy,
+		ClaimStrength:     report.ClaimStrength,
+		Candidates:        candidates,
+		SelectionReason:   report.SelectionReason,
+		NoCandidateReason: report.NoCandidateReason,
+		Limitations:       report.Limitations,
 	}
-	if len(candidates) > 0 {
-		winner := candidates[0]
-		doc.Winner = &winner
-		doc.WinnerReason = "first candidate in process-visible external command search order"
+	if report.Shell != nil {
+		doc.Shell = &jsonShell{Name: report.Shell.Name, Version: report.Shell.Version, Edition: report.Shell.Edition}
+	}
+	if report.Selected != nil {
+		selected := candidateJSON(*report.Selected)
+		doc.Selected = &selected
 	}
 	return doc
 }
 
-func powerShellJSONDocument(evidence ps.Evidence) jsonDocument {
-	candidates := make([]jsonCandidate, 0, len(evidence.Matches))
-	for _, match := range evidence.Matches {
-		candidates = append(candidates, jsonCandidate{
-			Kind:        normalizePowerShellKind(match.CommandType),
-			Name:        match.Name,
-			Path:        match.Path,
-			Source:      match.Source,
-			AliasTarget: match.AliasTarget,
-		})
-	}
-
-	doc := jsonDocument{
-		SchemaVersion:   jsonSchemaVersion,
-		Command:         evidence.Command,
-		ResolutionScope: "powershell-loaded-session",
-		Shell: &jsonShell{
-			Name:    "PowerShell",
-			Version: evidence.Version,
-			Edition: evidence.Edition,
-		},
-		Candidates: candidates,
-		Limitations: []string{
-			"Unloaded module auto-loading is not modeled yet.",
-		},
-	}
-	if len(candidates) > 0 {
-		winner := candidates[0]
-		doc.Winner = &winner
-		doc.WinnerReason = "first match reported by PowerShell for the current loaded session"
-	}
-	return doc
+func candidateJSON(c resolution.Candidate) jsonCandidate {
+	return jsonCandidate{Kind: normalizePowerShellKind(c.Type), Name: c.Name, Path: c.Path, Source: c.Source, AliasTarget: c.AliasTarget, PathIndex: c.PathIndex}
 }
 
 func pathJSONDocument(report pathdiag.Report) jsonPathDocument {
@@ -246,13 +206,12 @@ func pathJSONDocument(report pathdiag.Report) jsonPathDocument {
 
 func doctorJSONDocument(report doctorReport) jsonDoctorDocument {
 	otherCandidates := make([]string, 0)
-	pathWinner := ""
-	if len(report.Candidates) > 0 {
-		pathWinner = report.Candidates[0].Path
-		otherCandidates = make([]string, 0, len(report.Candidates)-1)
-		for _, candidate := range report.Candidates[1:] {
-			otherCandidates = append(otherCandidates, candidate.Path)
-		}
+	pathSelected := ""
+	if report.Resolution.Selected != nil {
+		pathSelected = report.Resolution.Selected.Path
+	}
+	for _, candidate := range report.Resolution.Alternatives {
+		otherCandidates = append(otherCandidates, candidate.Path)
 	}
 
 	status := "ok"
@@ -261,7 +220,7 @@ func doctorJSONDocument(report doctorReport) jsonDoctorDocument {
 	}
 
 	return jsonDoctorDocument{
-		SchemaVersion: jsonSchemaVersion,
+		SchemaVersion: resolutionJSONSchemaVersion,
 		Kind:          "doctor",
 		Status:        status,
 		Version:       report.Version,
@@ -272,12 +231,13 @@ func doctorJSONDocument(report doctorReport) jsonDoctorDocument {
 		RunningExecutable: report.RunningExecutable,
 		CommandDiscovery: jsonDoctorDiscovery{
 			State:           string(report.Discovery),
-			PathWinner:      pathWinner,
+			PathSelected:    pathSelected,
+			ResolutionScope: report.Resolution.Scope,
+			Policy:          report.Resolution.Policy,
+			ClaimStrength:   report.Resolution.ClaimStrength,
 			OtherCandidates: otherCandidates,
 		},
-		Limitations: []string{
-			"Command discovery is limited to the process-visible external search path.",
-		},
+		Limitations: report.Resolution.Limitations,
 	}
 }
 

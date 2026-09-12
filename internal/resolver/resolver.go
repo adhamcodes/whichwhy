@@ -20,18 +20,10 @@ type Candidate struct {
 	DirectoryIndex int
 }
 
-// Result contains the ordered external candidates for one command name.
+// Result contains ordered process-visible external evidence, not a shell winner.
 type Result struct {
 	Command    string
 	Candidates []Candidate
-}
-
-// Winner returns the first external candidate in search order.
-func (r Result) Winner() (Candidate, bool) {
-	if len(r.Candidates) == 0 {
-		return Candidate{}, false
-	}
-	return r.Candidates[0], true
 }
 
 // ResolveExternal finds external command candidates visible to the current process.

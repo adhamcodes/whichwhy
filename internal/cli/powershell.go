@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/adhamcodes/whichwhy/internal/resolution"
 	ps "github.com/adhamcodes/whichwhy/internal/shell/powershell"
 )
 
@@ -18,44 +19,17 @@ func runPowerShellEvidence(args []string, stdout, stderr io.Writer, jsonOutput b
 		fmt.Fprintf(stderr, "whichwhy: %v\n", err)
 		return 2
 	}
+	report := resolution.PowerShell(evidence)
 	if jsonOutput {
-		return printPowerShellJSON(stdout, stderr, evidence)
+		return printCommandJSON(stdout, stderr, report)
 	}
-	return printPowerShellEvidence(stdout, evidence)
+	return printCommandReport(stdout, report)
 }
 
-func printPowerShellEvidence(stdout io.Writer, evidence ps.Evidence) int {
-	fmt.Fprintf(stdout, "WhichWhy — %s\n\n", evidence.Command)
-
-	winner, ok := evidence.Winner()
-	if !ok {
-		fmt.Fprintln(stdout, "No command match was found in the current loaded PowerShell session.")
-		fmt.Fprintln(stdout, "\nCURRENT LIMIT")
-		fmt.Fprintln(stdout, "  An unloaded module may still be auto-loaded when PowerShell invokes a command.")
-		fmt.Fprintln(stdout, "  That case is not modeled yet.")
-		return 1
-	}
-
-	fmt.Fprintln(stdout, "POWERSHELL WINNER")
-	printPowerShellMatch(stdout, winner)
-
-	if len(evidence.Matches) > 1 {
-		fmt.Fprintln(stdout, "\nOTHER POWERSHELL MATCHES")
-		for _, match := range evidence.Matches[1:] {
-			printPowerShellMatch(stdout, match)
-		}
-	}
-
-	fmt.Fprintln(stdout, "\nWHY")
-	fmt.Fprintln(stdout, "  PowerShell itself reported this match first for the current loaded session.")
-	fmt.Fprintf(stdout, "\nSHELL\n  PowerShell %s (%s)\n", evidence.Version, evidence.Edition)
-	fmt.Fprintln(stdout, "\nCURRENT LIMIT")
-	fmt.Fprintln(stdout, "  Unloaded module auto-loading is not modeled yet.")
-	return 0
-}
-
-func printPowerShellMatch(stdout io.Writer, match ps.Match) {
-	switch match.CommandType {
+func printCommandCandidate(stdout io.Writer, match resolution.Candidate) {
+	switch match.Type {
+	case "external":
+		fmt.Fprintf(stdout, "  %s\n", match.Path)
 	case "Alias":
 		if match.AliasTarget != "" {
 			fmt.Fprintf(stdout, "  Alias %s -> %s\n", match.Name, match.AliasTarget)
@@ -69,11 +43,11 @@ func printPowerShellMatch(stdout io.Writer, match ps.Match) {
 		}
 		fmt.Fprintf(stdout, "  Cmdlet %s\n", match.Name)
 	case "Application", "ExternalScript":
-		fmt.Fprintf(stdout, "  %s %s\n", match.CommandType, match.Name)
+		fmt.Fprintf(stdout, "  %s %s\n", match.Type, match.Name)
 		if match.Path != "" {
 			fmt.Fprintf(stdout, "    %s\n", match.Path)
 		}
 	default:
-		fmt.Fprintf(stdout, "  %s %s\n", match.CommandType, match.Name)
+		fmt.Fprintf(stdout, "  %s %s\n", match.Type, match.Name)
 	}
 }
