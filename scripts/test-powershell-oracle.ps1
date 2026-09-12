@@ -102,3 +102,5 @@ finally {
     Remove-Item -LiteralPath 'Function:whichwhy' -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $lab -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+& (Join-Path $PSScriptRoot 'test-powershell-passive.ps1') -ExecutablePath $exe
