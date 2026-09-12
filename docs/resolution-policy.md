@@ -7,7 +7,8 @@ is `policy-only`. These identifiers are intentionally tested as literal values.
 
 ## Exact standalone policy
 
-This policy names the existing algorithm; it does not repair its known gaps.
+This policy names the implemented algorithm, including the focused R2 PATH
+evidence and R3 dotted-name corrections; it does not establish shell equivalence.
 
 1. Accept one nonempty command name. Reject names for which Go's platform-native
    `filepath.Base(name) != name`; explicit command paths remain unsupported.
@@ -20,12 +21,17 @@ This policy names the existing algorithm; it does not repair its known gaps.
 3. Visit directories in that order. An empty entry becomes `.`; relative entries
    are relative to the inspected process's current directory. There is no extra
    implicit current-directory search before PATH.
-4. On Windows, if `filepath.Ext(command)` is nonempty, check that name alone.
-   Otherwise split PATHEXT on semicolons, trim whitespace, discard empty values,
-   and prepend a dot to extensions that lack one. If no extensions remain,
-   use `.COM`, `.EXE`, `.BAT`, `.CMD`. Generate names in extension order,
-   removing case-insensitive duplicate names. Directory order takes precedence
-   over extension order. This includes the existing dotted-name/PATHEXT gap.
+4. On Windows, split PATHEXT on semicolons, trim whitespace, discard empty values,
+   and prepend a dot to extensions that lack one. Preserve spelling and order,
+   including duplicate entries at this parsing stage. If no extensions remain,
+   use `.COM`, `.EXE`, `.BAT`, `.CMD`. Compare `filepath.Ext(command)` (the final
+   dot and everything after it) with each resulting extension, case-insensitively.
+   If it matches, check the literal command name alone. Otherwise, if that suffix
+   is nonempty, check the literal name first, then append each PATHEXT extension
+   to the **whole command name** in extension order. With an empty suffix, check
+   only the appended names; do not introduce a literal extensionless candidate.
+   Remove case-insensitive duplicate generated names, keeping the first spelling
+   and position. Directory order takes precedence over this name order.
 5. Use `os.Stat` (following symlinks). On Windows accept any successfully observed
    non-directory candidate. On Unix accept successfully observed non-directory
    candidates with any of the `0111` permission bits set. Neither filter proves
@@ -183,10 +189,78 @@ no inspected fixtures; the existing controlled cmd oracle remains separate.
 The existing PowerShell 5.1 and 7 oracle scripts still compare the complete
 ordered list against the real shell and run the passive-inspection suite.
 
+## Dotted Windows names (R3 / F4)
+
+A dot in a name is not evidence that its suffix belongs to PATHEXT. With
+`.EXE;.CMD`, the exact policy name sequences are:
+
+| Command | Names checked within each PATH directory |
+| --- | --- |
+| `wwprobe` | `wwprobe.EXE`, `wwprobe.CMD` |
+| `wwprobe.v1` | `wwprobe.v1`, `wwprobe.v1.EXE`, `wwprobe.v1.CMD` |
+| `wwprobe.alpha.v1` | `wwprobe.alpha.v1`, `wwprobe.alpha.v1.EXE`, `wwprobe.alpha.v1.CMD` |
+| `wwprobe.cmd` | `wwprobe.cmd` |
+| `wwprobe.CmD` | `wwprobe.CmD` |
+| `wwprobe.` | `wwprobe.`, `wwprobe..EXE`, `wwprobe..CMD` |
+
+Recognition uses the parsed PATHEXT (or its default), not a hardcoded list of
+suffixes: `.V1;.CMD` makes `wwprobe.v1` literal-only; `.EXE` makes `.cmd` an
+unrecognized suffix. Existing parsing remains unchanged, including trimming,
+dot insertion, and fallback. These normalization choices are process policy,
+not assertions about every shell's treatment of malformed PATHEXT. No new
+validation of unusual or multi-dot PATHEXT entries is introduced.
+
+`go test ./internal/cli -run TestWindowsDottedPATHEXTOracles -count=1 -v`
+creates disposable native executables and marker-writing `.cmd` fixtures. It
+compares standalone human/JSON inspection with fresh `cmd.exe /D /Q /C`
+invocation and fresh PowerShell `Get-Command -All -ListImported` discovery with
+module auto-loading disabled. It runs under the existing Windows Go CI job;
+an unavailable PowerShell executable is an explicit skipped subtest. Both
+PowerShell versions were available locally: 5.1.26100.9444 and 7.6.5.
+
+The controlled observations on that Windows host were:
+
+- With only appended files present, cmd selects and both PowerShell versions
+  discover extensionless, `.v1`, and multi-dot names in PATHEXT order. Reversing
+  `.EXE;.CMD` reverses selection/order; a repeated `.cmd` adds no candidate.
+- With a native literal `wwprobe.v1` also present, cmd executes it and both
+  PowerShell versions list it before its appended `.exe` and `.cmd` alternatives.
+  Keeping the literal dotted candidate preserves previous process enumeration
+  and this observed ordering, while adding the formerly missed alternatives.
+- For explicit `.cmd` and mixed-case `.CmD`, cmd selects the literal when present.
+  Both PowerShell versions also list appended `.cmd.exe` and `.cmd.cmd` files.
+  When the literal is absent, cmd executes `.cmd.exe` and PowerShell discovers
+  the appended alternatives. **The process policy deliberately retains its
+  literal-only recognized-suffix rule**, so it does not enumerate that fallback.
+  A policy miss in this case is not a shell-unavailability claim.
+- PowerShell also discovers a native literal extensionless file after the
+  appended candidates, or alone. Cmd does not execute the extensionless-only
+  fixture through this PATH search. The process policy retains its existing
+  exclusion of literal extensionless files.
+- For `wwprobe.` with `wwprobe.cmd` and `wwprobe..cmd` present, cmd executes and
+  both PowerShell versions discover `wwprobe..cmd`. The rule appends without
+  stripping the trailing dot. Other Windows trailing-dot filesystem aliases
+  remain subject to the existing `os.Stat` behavior; no general claim is made.
+
+These fixtures establish the focused defect and ordering decisions, not universal
+Windows-shell equivalence. R1 scope/policy/claim strength remain
+`process-external` / `process-path-order-v1` / `policy-only`. R2 still supplies
+the original PATH entry indices and raw evidence. `TestWindowsDottedPATHCorrelation`
+checks missing and quoted entries, duplicate directories, extension ordering,
+and human/JSON correlation at PATH #2 and #4. Name-level tests check ordering
+before filesystem/path dedup can hide a defect. The `.v1.cmd` regression and
+unrecognized-suffix name tests were observed failing against the pre-F4 code.
+
+Human/JSON inspection and PowerShell discovery must leave the execution marker
+absent. Only the cmd oracle invokes the explicitly constructed harmless fixtures,
+and it verifies their identifying output and marker. Generic inspection gained
+no execution probe, shell invocation, or presentation-side precedence logic.
+
 ## Deferred work
 
-F4 dotted Windows names, F5 Unix user
-permissions, F6 PowerShell 5.1 transport, F7 observation retention, F8 broader
+F5 Unix user permissions, F6 PowerShell 5.1 transport, F7 observation retention, F8 broader
 oracles, F9 inspection routing/UX, and F10 final JSON compatibility remain
 separate missions. Naming, other shells, and package/version-manager intelligence
-are outside this change.
+are outside this change. Exact shell parity for recognized-suffix fallback,
+literal extensionless discovery, and unusual PATHEXT parsing is also outside F4;
+the controlled differences above remain explicit process-policy limitations.
