@@ -12,7 +12,7 @@ import (
 
 var defaultPathExt = []string{".COM", ".EXE", ".BAT", ".CMD"}
 
-func findCandidates(command string, entries []processpath.Entry, pathExtValue string) []Candidate {
+func findCandidates(command string, entries []processpath.Entry, pathExtValue string) ([]Candidate, error) {
 	candidates := make([]Candidate, 0)
 	names := windowsCandidateNames(command, pathExtValue)
 
@@ -33,7 +33,7 @@ func findCandidates(command string, entries []processpath.Entry, pathExtValue st
 		}
 	}
 
-	return candidates
+	return candidates, nil
 }
 
 func windowsCandidateNames(command, pathExtValue string) []string {

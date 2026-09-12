@@ -3,6 +3,8 @@
 package resolution
 
 import (
+	"runtime"
+
 	"github.com/adhamcodes/whichwhy/internal/processpath"
 	"github.com/adhamcodes/whichwhy/internal/resolver"
 	ps "github.com/adhamcodes/whichwhy/internal/shell/powershell"
@@ -57,6 +59,13 @@ func ProcessExternal(evidence resolver.Result) Report {
 			"Filesystem observation failures and skipped candidates are not fully retained; no candidate does not prove the command is unavailable.",
 			"Candidate eligibility is a filesystem filter, not proof of successful execution or invoking-user permission.",
 		},
+	}
+	if runtime.GOOS != "windows" {
+		r.Limitations = append(r.Limitations,
+			"Unix eligibility uses effective UID, effective GID and supplementary groups with owner/group/other mode-class precedence; UID 0 requires some execute bit. Symlinks use target metadata.",
+			"Mode-class eligibility does not evaluate ACLs, noexec mounts, Linux capabilities or distinct filesystem IDs, macOS extended group membership, or other platform restrictions; actual access may differ in either direction.",
+			"Identity and filesystem observations are not atomic; later credential, permission or file changes and interpreter/shebang failures can prevent execution.",
+		)
 	}
 	for _, c := range evidence.Candidates {
 		r.Candidates = append(r.Candidates, Candidate{Type: "external", Path: c.Path, PathIndex: c.DirectoryIndex + 1})
