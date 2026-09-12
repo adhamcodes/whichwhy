@@ -5,6 +5,7 @@ package resolver
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -32,5 +33,51 @@ func TestWindowsResolverPreservesPathExtOrderWithinDirectory(t *testing.T) {
 	}
 	if got, want := result.Candidates[1].Path, absolutePath(exePath); got != want {
 		t.Fatalf("second candidate = %q, want %q", got, want)
+	}
+}
+
+func TestWindowsCandidateNamesPATHEXT(t *testing.T) {
+	for _, tc := range []struct {
+		name, command, pathExt string
+		want                   []string
+	}{
+		{"extensionless", "wwtool", ".EXE;.CMD", []string{"wwtool.EXE", "wwtool.CMD"}},
+		{"dotted", "wwtool.v1", ".EXE;.CMD", []string{"wwtool.v1", "wwtool.v1.EXE", "wwtool.v1.CMD"}},
+		{"multi-dot", "wwtool.alpha.v1", ".CMD;.EXE", []string{"wwtool.alpha.v1", "wwtool.alpha.v1.CMD", "wwtool.alpha.v1.EXE"}},
+		{"recognized", "wwtool.cmd", ".EXE;.CMD", []string{"wwtool.cmd"}},
+		{"recognized-case", "wwtool.CmD", ".EXE;.cMd", []string{"wwtool.CmD"}},
+		{"custom-recognized", "wwtool.v1", ".V1;.CMD", []string{"wwtool.v1"}},
+		{"not-in-pathext", "wwtool.cmd", ".EXE", []string{"wwtool.cmd", "wwtool.cmd.EXE"}},
+		{"normalize-and-dedup", "wwtool.v1", " ; cmd ;.EXE;.CMD;exe;; ", []string{"wwtool.v1", "wwtool.v1.cmd", "wwtool.v1.EXE"}},
+		{"normalized-recognized", "wwtool.CmD", " cmd ;EXE", []string{"wwtool.CmD"}},
+		{"default-dotted", "wwtool.v1", " ; ", []string{"wwtool.v1", "wwtool.v1.COM", "wwtool.v1.EXE", "wwtool.v1.BAT", "wwtool.v1.CMD"}},
+		{"default-recognized", "wwtool.CmD", "", []string{"wwtool.CmD"}},
+		{"default-extensionless", "wwtool", "", []string{"wwtool.COM", "wwtool.EXE", "wwtool.BAT", "wwtool.CMD"}},
+		{"trailing-dot", "wwtool.", ".CMD", []string{"wwtool.", "wwtool..CMD"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := windowsCandidateNames(tc.command, tc.pathExt); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("names = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestWindowsDottedCommandRegression(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "wwtool.v1.cmd")
+	if err := os.WriteFile(path, []byte("@echo off\r\necho executed>inspected.marker\r\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	result, err := resolveExternal("wwtool.v1", dir, ".EXE;.CMD")
+	if err != nil || len(result.Candidates) != 1 {
+		t.Fatalf("dotted command missed: %#v, %v", result, err)
+	}
+	if candidatePathKey(result.Candidates[0].Path) != candidatePathKey(path) {
+		t.Fatalf("candidate = %#v", result.Candidates[0])
+	}
+	if _, err := os.Stat("inspected.marker"); !os.IsNotExist(err) {
+		t.Fatalf("inspection executed fixture or marker check failed: %v", err)
 	}
 }

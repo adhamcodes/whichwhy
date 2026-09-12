@@ -37,16 +37,25 @@ func findCandidates(command string, entries []processpath.Entry, pathExtValue st
 }
 
 func windowsCandidateNames(command, pathExtValue string) []string {
-	if filepath.Ext(command) != "" {
-		return []string{command}
-	}
-
 	extensions := parsePathExt(pathExtValue)
 	if len(extensions) == 0 {
 		extensions = defaultPathExt
 	}
 
-	names := make([]string, 0, len(extensions))
+	suffix := filepath.Ext(command)
+	for _, extension := range extensions {
+		if strings.EqualFold(suffix, extension) {
+			// Explicit executable suffixes stay literal under this process policy.
+			return []string{command}
+		}
+	}
+
+	names := make([]string, 0, len(extensions)+1)
+	if suffix != "" {
+		// Preserve literal dotted candidates, but a dot alone must not suppress
+		// PATHEXT expansion. Extensionless literals remain outside this policy.
+		names = append(names, command)
+	}
 	seen := make(map[string]struct{}, len(extensions))
 	for _, extension := range extensions {
 		name := command + extension

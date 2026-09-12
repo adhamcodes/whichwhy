@@ -96,3 +96,51 @@ func TestWindowsPATHDriveRelativeCorrelation(t *testing.T) {
 		t.Fatalf("drive-relative identity lost: %#v", d)
 	}
 }
+
+func TestWindowsDottedPATHCorrelation(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	first, last := filepath.Join(root, "first;dir"), filepath.Join(root, "last")
+	const command = "wwtool.alpha.v1"
+	for _, dir := range []string{first, last} {
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for _, suffix := range []string{".CMD", ".BAT"} {
+			if err := os.WriteFile(filepath.Join(dir, command+suffix), []byte("@echo off\r\necho executed>inspected.marker\r\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// Missing #1 and duplicate #3 must not compact candidate PATH indices.
+	value := `missing;"` + first + `";"` + strings.ToUpper(first) + `";` + last
+	t.Setenv("PATH", value)
+	t.Setenv("PATHEXT", ".BAT;.CMD;.bat;.cmd")
+	evidence, err := resolver.ResolveExternal(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := resolution.ProcessExternal(evidence)
+	if r.Scope != "process-external" || r.Policy != "process-path-order-v1" || r.ClaimStrength != "policy-only" || r.ProcessPath == nil || r.ProcessPath.Raw != value {
+		t.Fatalf("lost process claim/evidence: %#v", r)
+	}
+	d := pathdiag.InspectPath(*r.ProcessPath)
+	if len(d.Entries) != 4 || d.Entries[2].DuplicateOf != 2 || len(r.Candidates) != 4 {
+		t.Fatalf("dedup/order changed: %#v / %#v", r.Candidates, d)
+	}
+	for i, c := range r.Candidates {
+		index := []int{2, 2, 4, 4}[i]
+		entry := d.Entries[index-1]
+		want := filepath.Join(entry.EffectiveValue, command+[]string{".BAT", ".CMD"}[i%2])
+		if c.PathIndex != index || c.Path != want || entry.Index != index || !entry.Directory {
+			t.Fatalf("candidate %#v does not correlate with entry %#v; want %s", c, entry, want)
+		}
+	}
+	assertReportPresentations(t, r)
+	if os.Getenv("PATH") != value || os.Getenv("PATHEXT") != ".BAT;.CMD;.bat;.cmd" {
+		t.Fatal("inspection mutated process environment")
+	}
+	if _, err := os.Stat("inspected.marker"); !os.IsNotExist(err) {
+		t.Fatalf("inspection executed fixture or marker check failed: %v", err)
+	}
+}
