@@ -29,7 +29,7 @@ func runPowerShellEvidence(args []string, stdout, stderr io.Writer, jsonOutput b
 func printCommandCandidate(stdout io.Writer, match resolution.Candidate) {
 	switch match.Type {
 	case "external":
-		fmt.Fprintf(stdout, "  %s\n", match.Path)
+		fmt.Fprintf(stdout, "  %s (PATH #%d)\n", match.Path, match.PathIndex)
 	case "Alias":
 		if match.AliasTarget != "" {
 			fmt.Fprintf(stdout, "  Alias %s -> %s\n", match.Name, match.AliasTarget)

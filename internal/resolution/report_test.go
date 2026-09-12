@@ -21,6 +21,9 @@ func TestEvidenceClassesAndSelection(t *testing.T) {
 	if shell.Scope != "powershell-loaded-session" || shell.Policy != "powershell-loaded-session-order-v1" || shell.ClaimStrength != "shell-observed" || shell.Shell.Version != "5.1" {
 		t.Fatalf("shell claim = %#v", shell)
 	}
+	if shell.ProcessPath != nil {
+		t.Fatal("shell evidence acquired process PATH parsing")
+	}
 	if process.Selected.Path != "/first/probe" || process.Selected.PathIndex != 3 || process.Alternatives[0].PathIndex != 6 {
 		t.Fatalf("process order/identity changed: %#v", process)
 	}

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/adhamcodes/whichwhy/internal/processpath"
 )
 
 var (
@@ -17,12 +19,13 @@ var (
 // Candidate is an external command found through the process-visible search path.
 type Candidate struct {
 	Path           string
-	DirectoryIndex int
+	DirectoryIndex int // Zero-based offset into Result.Path.Entries; never compacted.
 }
 
 // Result contains ordered process-visible external evidence, not a shell winner.
 type Result struct {
 	Command    string
+	Path       processpath.Path
 	Candidates []Candidate
 }
 
@@ -41,8 +44,9 @@ func resolveExternal(command, pathValue, pathExtValue string) (Result, error) {
 		return Result{}, fmt.Errorf("%w: %s", ErrExplicitPathUnsupported, command)
 	}
 
-	candidates := distinctCandidatePaths(findCandidates(command, filepath.SplitList(pathValue), pathExtValue))
-	return Result{Command: command, Candidates: candidates}, nil
+	path := processpath.Parse(pathValue)
+	candidates := distinctCandidatePaths(findCandidates(command, path.Entries, pathExtValue))
+	return Result{Command: command, Path: path, Candidates: candidates}, nil
 }
 
 // distinctCandidatePaths removes repeated references to the same visible path while

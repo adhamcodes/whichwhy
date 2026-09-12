@@ -5,15 +5,15 @@ package resolver
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/adhamcodes/whichwhy/internal/processpath"
 )
 
-func findCandidates(command string, directories []string, _ string) []Candidate {
+func findCandidates(command string, entries []processpath.Entry, _ string) []Candidate {
 	candidates := make([]Candidate, 0)
 
-	for index, directory := range directories {
-		if directory == "" {
-			directory = "."
-		}
+	for _, entry := range entries {
+		directory := entry.EffectiveValue()
 
 		path := filepath.Join(directory, command)
 		info, err := os.Stat(path)
@@ -23,7 +23,7 @@ func findCandidates(command string, directories []string, _ string) []Candidate 
 
 		candidates = append(candidates, Candidate{
 			Path:           absolutePath(path),
-			DirectoryIndex: index,
+			DirectoryIndex: entry.Index - 1,
 		})
 	}
 

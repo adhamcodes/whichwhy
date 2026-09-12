@@ -3,6 +3,7 @@
 package resolution
 
 import (
+	"github.com/adhamcodes/whichwhy/internal/processpath"
 	"github.com/adhamcodes/whichwhy/internal/resolver"
 	ps "github.com/adhamcodes/whichwhy/internal/shell/powershell"
 )
@@ -19,7 +20,7 @@ const (
 // Candidate retains the identity supplied by the evidence collector.
 type Candidate struct {
 	Type, Name, Path, Source, AliasTarget string
-	PathIndex                             int // One-based process PATH index; zero for shell evidence.
+	PathIndex                             int // One-based ProcessPath entry index; zero for shell evidence.
 }
 
 type Shell struct {
@@ -32,6 +33,7 @@ type Shell struct {
 type Report struct {
 	Command, Scope, Policy, ClaimStrength string
 	Shell                                 *Shell
+	ProcessPath                           *processpath.Path // Nil for shell-observed evidence.
 	Selected                              *Candidate
 	Candidates                            []Candidate
 	Alternatives                          []Candidate
@@ -46,6 +48,7 @@ func ProcessExternal(evidence resolver.Result) Report {
 	r := Report{
 		Command: evidence.Command, Scope: ProcessScope, Policy: ProcessPolicy,
 		ClaimStrength:     PolicyOnly,
+		ProcessPath:       &evidence.Path,
 		Candidates:        make([]Candidate, 0, len(evidence.Candidates)),
 		NoCandidateReason: "No external command candidate was observed under this process policy.",
 		Limitations: []string{

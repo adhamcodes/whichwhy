@@ -43,13 +43,14 @@ type jsonDocument struct {
 }
 
 type jsonPathEntry struct {
-	Index       int    `json:"index"`
-	Value       string `json:"value"`
-	Directory   bool   `json:"directory"`
-	Missing     bool   `json:"missing"`
-	Empty       bool   `json:"empty"`
-	DuplicateOf int    `json:"duplicate_of,omitempty"`
-	Error       string `json:"error,omitempty"`
+	Index          int    `json:"index"`
+	Value          string `json:"value"`
+	EffectiveValue string `json:"effective_value"`
+	Directory      bool   `json:"directory"`
+	Missing        bool   `json:"missing"`
+	Empty          bool   `json:"empty"`
+	DuplicateOf    int    `json:"duplicate_of,omitempty"`
+	Error          string `json:"error,omitempty"`
 }
 
 type jsonPathSummary struct {
@@ -65,6 +66,8 @@ type jsonPathDocument struct {
 	SchemaVersion int             `json:"schema_version"`
 	Kind          string          `json:"kind"`
 	Scope         string          `json:"scope"`
+	Policy        string          `json:"policy"`
+	RawValue      string          `json:"raw_value"`
 	Entries       []jsonPathEntry `json:"entries"`
 	Summary       jsonPathSummary `json:"summary"`
 	Error         string          `json:"error,omitempty"`
@@ -111,6 +114,7 @@ func runPathJSON(stdout, stderr io.Writer, lookup envLookup, inspect pathInspect
 			SchemaVersion: jsonSchemaVersion,
 			Kind:          "path",
 			Scope:         "process-path",
+			Policy:        resolution.ProcessPolicy,
 			Entries:       []jsonPathEntry{},
 			Error:         "PATH is not set",
 		}
@@ -178,13 +182,14 @@ func pathJSONDocument(report pathdiag.Report) jsonPathDocument {
 	entries := make([]jsonPathEntry, 0, len(report.Entries))
 	for _, entry := range report.Entries {
 		entries = append(entries, jsonPathEntry{
-			Index:       entry.Index,
-			Value:       entry.Value,
-			Directory:   entry.Directory,
-			Missing:     entry.Missing,
-			Empty:       entry.Empty,
-			DuplicateOf: entry.DuplicateOf,
-			Error:       entry.Error,
+			Index:          entry.Index,
+			Value:          entry.Value,
+			EffectiveValue: entry.EffectiveValue,
+			Directory:      entry.Directory,
+			Missing:        entry.Missing,
+			Empty:          entry.Empty,
+			DuplicateOf:    entry.DuplicateOf,
+			Error:          entry.Error,
 		})
 	}
 
@@ -192,6 +197,8 @@ func pathJSONDocument(report pathdiag.Report) jsonPathDocument {
 		SchemaVersion: jsonSchemaVersion,
 		Kind:          "path",
 		Scope:         "process-path",
+		Policy:        resolution.ProcessPolicy,
+		RawValue:      report.RawValue,
 		Entries:       entries,
 		Summary: jsonPathSummary{
 			Entries:      len(report.Entries),

@@ -41,3 +41,13 @@ func TestInspectPreservesOrderAndReportsProblems(t *testing.T) {
 		t.Fatalf("report counts = %#v", report)
 	}
 }
+
+func TestInspectRetainsEntryObservationFailures(t *testing.T) {
+	// A NUL cannot be put into an OS environment, but a supplied inspection
+	// value must still retain the filesystem error rather than dropping its index.
+	value := "bad\x00entry" + string(os.PathListSeparator) + t.TempDir()
+	r := Inspect(value)
+	if len(r.Entries) != 2 || r.Entries[0].Index != 1 || r.Entries[0].Value != "bad\x00entry" || r.Entries[0].Error == "" || r.ErrorCount != 1 || r.Entries[1].Index != 2 || !r.Entries[1].Directory {
+		t.Fatalf("observation failure lost or shifted: %#v", r)
+	}
+}
