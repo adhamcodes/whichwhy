@@ -16,6 +16,7 @@ function Get-OracleSessionSnapshot {
         foreach ($f in @(Microsoft.PowerShell.Management\Get-ChildItem Function:)) { "function:$($f.Name):$($f.Definition)" }
         foreach ($a in @(Microsoft.PowerShell.Management\Get-ChildItem Alias:)) { "alias:$($a.Name):$($a.Definition):$($a.Options)" }
         "PATH:$env:PATH"
+        "PATHEXT:$env:PATHEXT"
         "PSModulePath:$env:PSModulePath"
         "location:$($ExecutionContext.SessionState.Path.CurrentLocation)"
     )

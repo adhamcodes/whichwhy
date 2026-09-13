@@ -1,5 +1,37 @@
 # Resolution claims
 
+## Command identity and public syntax
+
+Ordinary inspection remains `whichwhy git` or `whichwhy git --json`. Product
+commands remain `path`, `doctor`, `init powershell`, help and version.
+Use explicit inspection when the identity conflicts with product syntax or
+contains PowerShell wildcard characters:
+
+```text
+whichwhy inspect <literal-command>
+whichwhy inspect <literal-command> --json
+```
+
+The first argument after `inspect` is always the command identity. The only
+permitted subsequent argument is `--json`. Thus `whichwhy inspect --json`
+inspects a command named `--json`, and `whichwhy inspect --json --json` emits its
+report as JSON. `whichwhy inspect path` inspects `path` instead of diagnosing
+PATH; `whichwhy inspect inspect` inspects `inspect`. Missing/empty identities or
+extra arguments are usage errors (exit 2). There is no `-- <name>` grammar.
+Shell quoting remains the caller's responsibility, including a literal identity
+that the shell itself treats specially.
+
+In PowerShell, examples include `whichwhy inspect 'ww*f9'` for a literal
+session command and `whichwhy inspect 'ww[f9].cmd' --json` for a literal external
+filename. For wildcard-bearing external identities, supply the complete filename:
+exact filtering does not invent extension inference from a pattern-sensitive
+name. Discovery is not proof of successful invocation.
+
+Explicit standalone inspection uses the unchanged process policy below and stays
+`policy-only`. Only the active PowerShell bridge can supply `shell-observed`
+loaded-session evidence. Explicit inspection changes routing, not standalone
+PATH, suffix, eligibility, or completeness rules.
+
 Standalone inspection reports a **policy-selected candidate**, not the command
 that an unobserved shell will execute. The policy name is
 `process-path-order-v1`; its scope is `process-external` and its claim strength
@@ -119,6 +151,46 @@ invocation. Unloaded-module auto-loading remains unmodeled; even a discovered
 alias does not prove its target can execute. The F1 collector guard is unchanged.
 No discovery probe executes the inspected command.
 
+### Explicit PowerShell inspection
+
+The explicit collector runs entirely inside the existing F1 global autoload guard.
+Qualified `Get-Command -Name '*' -All -ListImported` supplies broad observations;
+in-memory `OrdinalIgnoreCase` comparison selects exact command names, or exact
+`Source\Name` module-qualified identities for shell-local commands. The original
+requested string is never rewritten; shell name matching and F6 transport
+identity are separate. Candidate metadata comes from returned `CommandInfo`
+objects, including shadowed module exports.
+
+For identities containing `*`, `?`, `[` or `]`, filtering the broad list retains
+the shell's order within the requested full name. It excludes unrelated pattern
+matches and handles even strings that are invalid wildcard expressions. This
+includes literal external filenames with brackets. For other identities, broad
+discovery is restricted to shell-local types. Its exact local matches precede
+the unmodified ordered external observations from a separate guarded, qualified
+`Get-Command -Name <identity> -CommandType Application,ExternalScript -All
+-ListImported` query. No list is sorted and no external suffix rules are
+implemented in the bridge. Non-miss discovery errors abort the request; state
+restoration still runs in `finally`.
+
+The split is necessary because broad discovery groups applications by filename,
+whereas ordinary exact-name discovery uses PATH and extension order. Both native
+oracle gates compare the combined result's complete metadata/order/selection
+against ordinary guarded `Get-Command`, including competing `.cmd`/`.bat` files
+in two PATH directories. Literal fixtures independently specify identity, metadata
+and order, including alias/function/application collisions and qualified exports.
+
+`CommandInvocationIntrinsics.GetCommands(name, All, false)` is insufficient:
+both tested shells miss literal bracket-containing external filenames, and its
+unqualified lookup can omit shadowed function exports retained by `Get-Command
+-All`. Wildcard escaping is not a substitute: 5.1 and 7 escape backticks
+differently and escaped external queries can miss real filenames. Neither is
+used by the explicit collector.
+
+Explicit inspection may enumerate substantially more commands than ordinary
+inspection, especially PATH files for wildcard-bearing identities. Ordinary
+`whichwhy git` retains its existing narrow collector. These are Windows 5.1/7
+discovery guarantees, not a new shell/platform support claim.
+
 ### Internal command transport (R6 / F6)
 
 Both `__powershell` and `__powershell-json` accept the same positional arguments:
@@ -148,8 +220,12 @@ PowerShell caller fails with an encoding exception before a native request exist
 The evidence records retain their previous Base64 encoding, five-field ordering
 (type, name, source, path, alias target), separator, and semantics. Resolution
 ordering, scope, policy, claim strength, and human/JSON schema are unchanged.
-Wildcard and reserved-word routing still belongs to F9 and can bypass this bridge;
-this contract applies to the hidden evidence endpoints, not general CLI forwarding.
+Explicit inspection uses this same transport, including reserved names and
+wildcard characters. Public parsing never reinterprets an `inspect` operand as
+an internal endpoint. The bridge refuses user attempts to forward private requests.
+The native private wire shape remains a caller-supplied evidence interface, not
+an authentication mechanism: naming an endpoint alone is insufficient, the full
+wire request must pass the existing decoder. No new public evidence input exists.
 
 `scripts/test-powershell-transport.ps1` tests the actual generated bridge and native
 CLI in fresh Windows PowerShell 5.1 and PowerShell 7 processes. It is also called
@@ -580,7 +656,7 @@ buildability, never native Unix runtime success.
 ## Deferred work
 
 F8 verification is specified in the [oracle contract](oracle-contract.md).
-F9 inspection routing/UX and F10 final JSON compatibility remain separate missions.
+F10 final JSON compatibility remains a separate mission.
 Naming, other shells, and package/version-manager intelligence
 are outside this change. Exact shell parity for recognized-suffix fallback,
 literal extensionless discovery, and unusual PATHEXT parsing is also outside F4;

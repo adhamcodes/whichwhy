@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	"github.com/adhamcodes/whichwhy/internal/pathdiag"
 	"github.com/adhamcodes/whichwhy/internal/resolution"
@@ -17,6 +16,8 @@ const usage = `WhichWhy — inspect command-resolution evidence and its limits.
 Usage:
   whichwhy <command>
   whichwhy <command> --json
+  whichwhy inspect <literal-command>
+  whichwhy inspect <literal-command> --json
   whichwhy path
   whichwhy path --json
   whichwhy doctor
@@ -25,6 +26,8 @@ Usage:
   whichwhy --help
   whichwhy --version
 
+Use inspect when a command name conflicts with WhichWhy syntax or contains shell wildcard characters. Quote names for your shell.
+
 External command inspection, PATH diagnostics, and the installation doctor are available. PowerShell session integration is experimental.
 `
 
@@ -32,16 +35,28 @@ type externalResolver func(string) (resolver.Result, error)
 
 // Run executes the command-line interface and returns a process exit code.
 func Run(args []string, stdout, stderr io.Writer, version string) int {
-	if len(args) > 0 {
-		switch args[0] {
-		case "__powershell":
-			return runPowerShellEvidence(args[1:], stdout, stderr, false)
-		case "__powershell-json":
-			return runPowerShellEvidence(args[1:], stdout, stderr, true)
-		}
+	// Only the private wire shape can enter evidence decoding. Public inspect
+	// operands cannot reach this route; malformed private requests fail closed.
+	if len(args) >= 4 && (args[0] == "__powershell" || args[0] == "__powershell-json") {
+		return runPowerShellEvidence(args[1:], stdout, stderr, args[0] == "__powershell-json")
 	}
+	return run(args, stdout, stderr, version, resolver.ResolveExternal)
+}
 
-	if len(args) == 2 && args[0] == "init" && strings.EqualFold(args[1], "powershell") {
+func run(args []string, stdout, stderr io.Writer, version string, resolve externalResolver) int {
+	request, err := parseInvocation(args)
+	if err != nil {
+		fmt.Fprintf(stderr, "whichwhy: %v\n", err)
+		return 2
+	}
+	switch request.operation {
+	case showHelp:
+		fmt.Fprint(stdout, usage)
+		return 0
+	case showVersion:
+		fmt.Fprintf(stdout, "whichwhy %s\n", version)
+		return 0
+	case initPowerShell:
 		executable, err := os.Executable()
 		if err != nil {
 			fmt.Fprintf(stderr, "whichwhy: locate executable: %v\n", err)
@@ -49,66 +64,24 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 		}
 		fmt.Fprint(stdout, ps.InitScript(executable))
 		return 0
-	}
-
-	if len(args) > 0 && args[0] == "path" {
-		switch {
-		case len(args) == 1:
-			return runPath(stdout, stderr, os.LookupEnv, pathdiag.Inspect)
-		case len(args) == 2 && args[1] == "--json":
+	case pathOperation:
+		if request.json {
 			return runPathJSON(stdout, stderr, os.LookupEnv, pathdiag.Inspect)
-		default:
-			fmt.Fprintln(stderr, "whichwhy: path accepts optional --json")
-			return 2
 		}
-	}
-
-	if len(args) > 0 && args[0] == "doctor" {
-		switch {
-		case len(args) == 1:
-			return runDoctor(stdout, stderr, version, os.Executable, resolver.ResolveExternal)
-		case len(args) == 2 && args[1] == "--json":
-			return runDoctorJSON(stdout, stderr, version, os.Executable, resolver.ResolveExternal)
-		default:
-			fmt.Fprintln(stderr, "whichwhy: doctor accepts optional --json")
-			return 2
+		return runPath(stdout, stderr, os.LookupEnv, pathdiag.Inspect)
+	case doctorOperation:
+		if request.json {
+			return runDoctorJSON(stdout, stderr, version, os.Executable, resolve)
 		}
+		return runDoctor(stdout, stderr, version, os.Executable, resolve)
 	}
-
-	return run(args, stdout, stderr, version, resolver.ResolveExternal)
-}
-
-func run(args []string, stdout, stderr io.Writer, version string, resolve externalResolver) int {
-	if len(args) == 0 {
-		fmt.Fprint(stdout, usage)
-		return 0
-	}
-
-	switch args[0] {
-	case "-h", "--help", "help":
-		fmt.Fprint(stdout, usage)
-		return 0
-	case "-v", "--version", "version":
-		fmt.Fprintf(stdout, "whichwhy %s\n", version)
-		return 0
-	case "init":
-		fmt.Fprintf(stderr, "whichwhy: %s is not implemented yet\n", args[0])
-		return 2
-	}
-
-	jsonOutput := len(args) == 2 && args[1] == "--json"
-	if len(args) != 1 && !jsonOutput {
-		fmt.Fprintln(stderr, "whichwhy: command inspection accepts one command name and optional --json")
-		return 2
-	}
-
-	result, err := resolve(args[0])
+	result, err := resolve(request.command)
 	if err != nil {
 		fmt.Fprintf(stderr, "whichwhy: %v\n", err)
 		return 2
 	}
 	report := resolution.ProcessExternal(result)
-	if jsonOutput {
+	if request.json {
 		return printCommandJSON(stdout, stderr, report)
 	}
 	return printCommandReport(stdout, report)

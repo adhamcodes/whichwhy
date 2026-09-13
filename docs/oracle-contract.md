@@ -12,6 +12,7 @@ test, never an independent shell oracle.
 | `powershell-loaded-session` / `powershell-loaded-session-order-v1` / `shell-observed` | Loaded-session discovery, not successful invocation | Real `Microsoft.PowerShell.Core\Get-Command -All -ListImported` in the same controlled session, with global autoload disabled only during oracle discovery | Windows PowerShell 5.1 and 7: `scripts/test-powershell-oracle.ps1` | Ordered discovery, metadata, selection, missing-result or session/passivity claim regressed |
 | PowerShell passive inspection (F1) | Non-mutation and absence of execution | Disposable module initialization/body markers; preference identity/value/options; loaded modules and global variable names | Both oracle steps compose `test-powershell-passive.ps1`, each of its 16 preference cases in a fresh process | Discovery imported a module, ran a body, leaked state, failed restoration or failed to refuse an unsafe guard |
 | Exact PowerShell command identity (R6/F6) | Actual generated bridge and native argument boundary | 15 literal identities, real aliases or controlled missing qualified names; ordinal human/JSON identity and passive Get-Command comparison | Both oracle steps compose `test-powershell-transport.ps1` in fresh processes | Quoting, Unicode, encoding, double decoding, candidate metadata or malformed-request rejection regressed |
+| Explicit literal inspection (R8/F9) | Exact loaded-session discovery and unchanged standalone policy | Ordinary identities compare the hybrid collector with independent guarded narrow Get-Command; metacharacter identities use fixed provider/file fixtures with unrelated pattern competitors | Both oracle steps compose `test-powershell-literal.ps1`; F1 and F6 also exercise `inspect`; Go parser/routing and standalone fixture tests | Reserved words enter product routing, a pattern expands, ordering differs, transport changes, or public arguments enter private evidence routing |
 | Windows `process-external` / `process-path-order-v1` / `policy-only` | Process policy, **no general shell oracle** | Controlled filesystem and literal expected order; selected cmd comparisons classified below | Windows Go tests: `TestWindowsPolicyVersusCmdOracle`, `TestWindowsDottedPATHEXTOracles` | Documented policy changed, controlled shell behavior changed, or output falsely upgraded to shell truth |
 | Unix same process identifiers | Effective-user mode-class policy, **no shell oracle** | Real PATH/filesystem/Stat, effective UID/GID/groups, chmod and symlink target facts; direct kernel execution of a disposable owner fixture | Ubuntu and macOS Go tests: `TestUnixOwnerEligibilityOracle`, `TestUnixCandidateTargetModes`, `TestUnixCollectedEffectiveIdentity`, `TestUnixEligibilityPATHCorrelation` | Native collection, class eligibility, target semantics or passivity regressed (or the runner no longer supports the required fixture) |
 | Original PATH identity (R2) | Process parsing and correlation, no shell truth | Native `filepath.SplitList`, fixed raw segments, disposable directories, independently specified original indices | All Go jobs: `internal/processpath` tests, `TestProcessPATHEmptyRelativeDuplicateCorrelation`; Windows quoted/dotted correlation tests | Empty/quoted/duplicate entries drifted or skipped entries renumbered candidates |
@@ -43,6 +44,24 @@ unloaded bare/qualified module names, and a deliberately loaded module command.
 All bodies write disposable markers. F1 also tests aliases
 to unloaded commands, qualified core discovery and constrained preference failures.
 Transport covers difficult names without duplicating the entire F1 suite.
+
+Both ordinary and explicit inspection run through the main oracle phases. Two
+PATH directories each contain `.cmd` and `.bat` alternatives, catching broad
+discovery's different filename grouping and any manual reordering. Explicit
+literal tests obtain expected alias/function metadata through literal provider
+paths, and specify exact external paths and order from controlled fixtures.
+They do not call the product's broad-filter helper as their oracle. Brackets,
+backticks, invalid wildcard expressions, case, Unicode, reserved/internal-looking
+names, qualified module exports, and missing identities are covered. All fixture
+bodies remain unexecuted. The existing F1 matrix also exercises explicit lookup
+and constrained guard refusal; the F6 identities run through both public grammars.
+
+The explicit wildcard-bearing external contract matches complete filenames;
+it does not infer suffixes from wildcard queries. Exact-name matching is
+case-insensitive under PowerShell semantics, while command transport and report
+headings preserve the requested string ordinally. Broad discovery and the engine
+API alone are not substitutes for the ordered narrow oracle; see the
+[resolution policy](resolution-policy.md#explicit-powershell-inspection).
 
 ## Controlled Windows comparisons
 
