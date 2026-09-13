@@ -92,7 +92,7 @@ func TestRunPowerShellJSONPreservesShellWinnerAndOrder(t *testing.T) {
 		"Application", "wwprobe.cmd", "", `C:\Tools\wwprobe.cmd`, "",
 	}, "\x1f")))
 
-	code := Run([]string{"__powershell-json", "wwprobe", "5.1", "Desktop", alias, application}, &stdout, &stderr, "dev")
+	code := Run([]string{"__powershell-json", encodeTestCommand("wwprobe"), "5.1", "Desktop", alias, application}, &stdout, &stderr, "dev")
 	if code != 0 {
 		t.Fatalf("Run() exit code = %d, want 0", code)
 	}

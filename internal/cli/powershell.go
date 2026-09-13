@@ -10,7 +10,7 @@ import (
 
 func runPowerShellEvidence(args []string, stdout, stderr io.Writer, jsonOutput bool) int {
 	if len(args) < 3 {
-		fmt.Fprintln(stderr, "whichwhy: incomplete PowerShell evidence")
+		fmt.Fprintln(stderr, "whichwhy: incomplete PowerShell evidence: expected base64 command, version, edition, and optional records")
 		return 2
 	}
 
