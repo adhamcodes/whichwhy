@@ -122,3 +122,11 @@ func testPathExt() string {
 	}
 	return ""
 }
+
+func absolutePath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		panic(err)
+	}
+	return abs
+}

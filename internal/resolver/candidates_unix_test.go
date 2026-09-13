@@ -51,6 +51,13 @@ func TestUnixCandidateTargetModes(t *testing.T) {
 				if want && (r.Candidates[0].Path != filepath.Join(dir, command) || r.Candidates[0].DirectoryIndex != 0) {
 					t.Fatalf("candidate spelling/index changed: %#v", r.Candidates)
 				}
+				status := ObservedIneligible
+				if want {
+					status = ObservedCandidate
+				}
+				if len(r.Observations) != 1 || r.Observations[0].Status != status || r.Observations[0].Incomplete() {
+					t.Fatalf("eligibility observation lost: %#v", r)
+				}
 			}
 		})
 	}
@@ -68,6 +75,13 @@ func TestUnixCandidateTargetModes(t *testing.T) {
 		if err != nil || len(r.Candidates) != 0 {
 			t.Fatalf("%s: %#v %v", command, r, err)
 		}
+		status := ObservedDirectory
+		if command == "broken" {
+			status = ObservedNotFound
+		}
+		if len(r.Observations) != 1 || r.Observations[0].Status != status || r.Observations[0].Incomplete() {
+			t.Fatalf("target observation lost: %#v", r)
+		}
 	}
 }
 
@@ -82,12 +96,12 @@ func TestUnixCollectedEffectiveIdentity(t *testing.T) {
 func TestUnixCollectionFailureIsOperationalError(t *testing.T) {
 	failure := errors.New("controlled identity failure")
 	source := func() (unixIdentity, error) { return unixIdentity{}, failure }
-	candidates, err := findUnixCandidates("probe", processpath.Parse(t.TempDir()).Entries, source)
-	if !errors.Is(err, failure) || candidates != nil {
+	candidates, err := findUnixCandidates("probe", processpath.Parse(t.TempDir()).Entries, source, os.Stat)
+	if !errors.Is(err, failure) || candidates.Candidates != nil || candidates.Observations != nil {
 		t.Fatalf("identity failure became a completed search: %v %v", candidates, err)
 	}
-	candidates, err = findUnixCandidates("probe", nil, source)
-	if err != nil || candidates == nil || len(candidates) != 0 {
+	candidates, err = findUnixCandidates("probe", nil, source, os.Stat)
+	if err != nil || candidates.Candidates == nil || len(candidates.Candidates) != 0 || candidates.Observations == nil {
 		t.Fatalf("empty PATH unnecessarily requires identity: %v %v", candidates, err)
 	}
 	info, err := os.Stat(t.TempDir())
@@ -108,3 +122,62 @@ type missingOwnership struct {
 }
 
 func (info missingOwnership) Sys() any { return info.metadata }
+
+func TestUnixObservationFailuresAndEligibility(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "probe")
+	if err := os.WriteFile(file, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := func() (unixIdentity, error) { return unixIdentity{uid: 1000, gid: 1000}, nil }
+	for _, metadata := range []any{nil, (*syscall.Stat_t)(nil), "invalid"} {
+		r, err := findUnixCandidates("probe", processpath.Parse(dir).Entries, source, func(string) (os.FileInfo, error) { return missingOwnership{FileInfo: info, metadata: metadata}, nil })
+		if err == nil || r.Candidates != nil || r.Observations != nil {
+			t.Fatalf("ownership failure downgraded: %#v %v", r, err)
+		}
+	}
+	entries := processpath.Parse("failed:ineligible:eligible:failed").Entries
+	eligibleInfo := missingOwnership{FileInfo: observedMode{FileInfo: info, mode: 0o100}, metadata: &syscall.Stat_t{Uid: 1000, Gid: 1000}}
+	r, err := findUnixCandidates("probe", entries, source, func(path string) (os.FileInfo, error) {
+		switch filepath.Dir(path) {
+		case "failed":
+			return nil, &os.PathError{Op: "stat", Path: path, Err: syscall.EACCES}
+		case "ineligible":
+			return missingOwnership{FileInfo: observedMode{FileInfo: info, mode: 0o011}, metadata: &syscall.Stat_t{Uid: 1000, Gid: 1000}}, nil
+		default:
+			return eligibleInfo, nil
+		}
+	})
+	if err != nil || len(r.Candidates) != 1 || r.Candidates[0].DirectoryIndex != 2 || len(r.Observations) != 4 {
+		t.Fatalf("%#v %v", r, err)
+	}
+	for i, status := range []ObservationStatus{ObservedError, ObservedIneligible, ObservedCandidate, ObservedError} {
+		if r.Observations[i].Status != status || r.Observations[i].PathIndex != i+1 {
+			t.Fatalf("%#v", r.Observations)
+		}
+	}
+	// Real Stat follows the symlink; looping targets are failures, missing targets
+	// are negatives. No lstat-based guess about link identity is introduced.
+	if err := os.Symlink("loop", filepath.Join(dir, "loop")); err != nil {
+		t.Fatal(err)
+	}
+	loop, err := resolveExternal("loop", dir, "")
+	if err != nil || len(loop.Observations) != 1 || loop.Observations[0].Status != ObservedError || !loop.Observations[0].Incomplete() {
+		t.Fatalf("loop failure lost: %#v %v", loop, err)
+	}
+	notDir, err := resolveExternal("probe", file, "")
+	if err != nil || len(notDir.Observations) != 1 || notDir.Observations[0].Status != ObservedNotDirectory || notDir.Observations[0].Incomplete() {
+		t.Fatalf("ENOTDIR lost: %#v %v", notDir, err)
+	}
+}
+
+type observedMode struct {
+	os.FileInfo
+	mode os.FileMode
+}
+
+func (i observedMode) Mode() os.FileMode { return i.mode }

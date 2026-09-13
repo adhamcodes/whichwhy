@@ -8,8 +8,8 @@ is `policy-only`. These identifiers are intentionally tested as literal values.
 ## Exact standalone policy
 
 This policy names the implemented algorithm, including the focused R2 PATH
-evidence, R3 dotted-name and R4 Unix eligibility corrections; it does not establish
-shell equivalence.
+evidence, R3 dotted-name, R4 Unix eligibility and R5 observation-retention
+corrections; it does not establish shell equivalence.
 
 1. Accept one nonempty command name. Reject names for which Go's platform-native
    `filepath.Base(name) != name`; explicit command paths remain unsupported.
@@ -43,13 +43,17 @@ shell equivalence.
    keeping the first occurrence and its original PATH index. Do not resolve
    symlink identity for this deduplication.
 7. Select the first remaining observed candidate, if any. Preserve the others in
-   order as alternatives **under this policy**. No selection means no observed
-   candidate under this policy, not proof that a shell cannot find the command.
+   order as alternatives **under this policy**. An unresolved Stat attempt before
+   that candidate makes its precedence uncertain; selection is then only among
+   observed candidates. A failure after it leaves its observed precedence intact.
+   No selection means no observed candidate under this policy, not proof that a
+   shell cannot find the command. See the F7 completeness rules below.
 
-Stat failures and skipped candidates are not fully retained by the existing
-collector. The report explicitly discloses that limitation. It also discloses
-unobserved shell-local state and possible differences in shell external search
-rules, including current-directory, empty-entry, and quoted-PATH behavior.
+Every candidate-search attempt now retains its outcome, including Stat failures
+and skipped operands. The report discloses inspection completeness separately
+from claim strength. It also discloses unobserved shell-local state and possible
+differences in shell external search rules, including current-directory,
+empty-entry, and quoted-PATH behavior.
 
 ## Correlated process PATH evidence (R2 / F2)
 
@@ -96,8 +100,8 @@ always refer to the first original one-based entry, including empty, quoted, and
 relative spellings of that directory. They do not deduplicate the entry list or
 resolve symlinks. Directory duplicate labels are lexical directory comparisons;
 candidate deduplication remains the existing separate comparison of final file
-paths. Neither claims filesystem object identity. Failures to make comparison
-keys absolute are not newly structured here (F7 remains deferred).
+paths. Neither claims filesystem object identity. Candidate absolute-path failures
+are retained by F7; PATH diagnostics' own lexical comparison fallback is unchanged.
 
 This fixes evidence correlation without changing resolver enumeration or selection,
 so `process-path-order-v1`, `process-external`, and `policy-only` remain unchanged.
@@ -124,11 +128,13 @@ candidate or reconstruct reasons independently. Missing results retain scope,
 policy, claim strength, and limitations. Claim strength describes the evidence
 class, not a probability or a promise of execution.
 
-Exit status 0 means a candidate was selected within the reported scope; 1 means
-no candidate was observed; 2 remains an operational/usage error (including Unix
-identity or ownership metadata unavailable for eligibility evaluation). Doctor retains
-its existing warning/status rules and executable-identity deduplication, but
-consumes a process report for selection and reports its claim and limitations.
+Exit status 0 means a candidate was selected among observed candidates within the
+reported scope, including `precedence-uncertain` process selections; 1 means
+no candidate was observed, with completeness reported separately; 2 remains an
+operational/usage error (including Unix identity or ownership metadata unavailable
+for eligibility evaluation). Doctor retains its warning/status convention and
+executable-identity deduplication, extending warnings to incomplete inspection.
+It consumes a process report for selection, claim and limitations.
 
 Command inspection JSON uses schema version 2:
 
@@ -287,16 +293,15 @@ owner UID, group GID and permission mode from that same `os.Stat` result:
 Read/write, setuid/setgid and sticky bits do not grant execute eligibility.
 The existing non-directory filter remains; this is not a new file-format or
 regular-file validity check. `os.Stat` still follows symlinks, including for
-UID/GID/mode; broken links yield the existing Stat skip. Candidate paths retain
-the link spelling. Lexical deduplication, first-producing-entry order, original
+UID/GID/mode; missing targets yield a retained `not-found` observation. Candidate
+paths retain the link spelling. Lexical deduplication, first-producing-entry order, original
 PATH indices and raw PATH evidence are unchanged.
 
 Group collection failure aborts with a wrapped operational error, preserving its
 cause; it is never interpreted as an empty group list. Missing Unix ownership
 metadata likewise aborts with the candidate path in the error. No completed
 no-candidate report is produced on either failure. This uses the existing error
-channel without introducing F7's structured per-candidate observation model.
-Existing Stat failures/skips still have the existing explicit report limitation.
+channel; F7 does not downgrade those failures into per-attempt observations.
 
 ### What this proves, and alternatives considered
 
@@ -369,9 +374,152 @@ claim, and non-Unix/non-Windows targets return an explicit unsupported error.
 R1/R2/R3 identifiers and Windows behavior remain unchanged. These fixtures do not
 establish Bash, Zsh or Fish equivalence; the evidence remains process-policy only.
 
+## Retained candidate observations (R5 / F7)
+
+The collectors formerly discarded Stat errors, directories and mode-ineligible
+files through `continue`. The same clean-looking miss could mean either observed
+absence or failed inspection. A later candidate also lacked evidence explaining
+whether an unobserved earlier operand could precede it.
+
+`resolver.Result.Observations` now retains every attempted candidate operand.
+Windows supplies the unchanged R3 name sequence; Unix supplies one name and the
+unchanged R4 effective-identity eligibility function. A small shared collector
+owns Stat, outcome retention and candidate path normalization. Identity collection
+remains Unix-specific and happens once before a nonempty search.
+
+Each observation carries a one-based `attempt`, original one-based `path_index`,
+generated `name`, actual Stat operand `path`, semantic `status`, and optional
+`error` containing `operation`, `category` and diagnostic `message`. Raw error
+text is supplementary, never the machine-readable classification. `path_index`
+correlates with the same R2 parsed entry used by candidates, including empty,
+relative, quoted and repeated entries. The Stat operand can be relative; the
+candidate path still uses absolute spelling when available.
+
+| Status | Meaning | Reduces completeness? |
+| --- | --- | --- |
+| `candidate` | Observed non-directory eligible under the platform filter | Only if absolute-path conversion failed |
+| `not-found` | Stat reported file/path/target absent | No |
+| `directory` | Stat succeeded and the operand is a directory | No |
+| `not-directory` | Unix Stat returned ENOTDIR for a path component | No |
+| `mode-ineligible` | Stat succeeded; R4 mode-class eligibility rejected the file | No |
+| `error` | Stat could not establish an eligible candidate or ordinary negative | Yes |
+
+Stat error categories are `not-found`, `not-directory`, `permission-denied` and
+`other`. ENOENT / `os.ErrNotExist` is ordinary negative evidence on Unix; EACCES
+and EPERM are `permission-denied`, while symlink loops, I/O errors, invalid
+operands, unavailable network paths and unexpected errors remain `other` failures.
+Wrapped errors retain the same classification. No retry, ACL manipulation,
+candidate execution, or additional filesystem traversal is introduced.
+
+Windows file/path-not-found codes are ordinary negatives. Go's Windows
+`syscall.ENOTDIR` aliases `ERROR_PATH_NOT_FOUND`, so that code cannot establish
+a known non-directory component. `ERROR_DIRECTORY` means an invalid directory
+name and is conservatively an `other` failure. Go also considers
+`ERROR_BAD_NETPATH` an `os.ErrNotExist` match; F7 deliberately preserves it as an
+`other` failure rather than treating an unavailable network path as candidate
+absence. Classification uses the error actually supplied by Stat, not guesses
+from path spelling. Some malformed or overlong paths can return path-not-found
+on Windows; those observations retain that platform report without inventing a
+more specific diagnosis.
+
+These distinctions follow [Go's error matching](https://go.dev/src/os/error.go)
+and [Windows error definitions](https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499-),
+with the installed Go platform mappings checked and regression-tested. Stat
+follows symlinks. A broken link whose target lookup returns ENOENT is `not-found`;
+this says the target lookup failed with absence, not that the link itself is
+absent. Without Lstat the collector cannot distinguish a missing link from a
+missing target, and does not claim to. A denied or looping target is an `error`.
+
+Absolute-path conversion is attempted only for eligible candidates, as before.
+Its failure retains `status=candidate`, an `absolute-path` / `other` error, and
+the existing cleaned candidate-path fallback. Inspection becomes incomplete;
+this failure alone does not create an unknown earlier eligible operand. Candidate
+identity/dedup uses the documented fallback spelling and remains a lexical claim.
+
+Missing identity/groups or missing ownership metadata abort the entire collection
+with the existing wrapped operational error. No completed partial report is
+returned: the eligibility policy itself could not be evaluated truthfully.
+
+### Ordering, duplicates and completed claims
+
+Observation order is exactly PATH entry order, then generated-name order within
+each entry. The attempt number indexes that sequence; it is independent of
+candidate deduplication. Repeated PATH entries retain every actual attempt, even
+if their eligible candidates later collapse to the first visible path. Generated
+Windows names are still deduplicated by R3 before any filesystem attempt. F7
+does not invent records for names that were never attempted.
+
+`resolution.ProcessExternal` produces `inspection.completeness=complete` or
+`incomplete` and process `selection_status`:
+
+- `definitive`: the first observed eligible candidate has no preceding unresolved
+  Stat attempt. This is definitive only within the observed process policy.
+- `precedence-uncertain`: a preceding unresolved attempt could have produced an
+  earlier candidate. `selected` remains the first **observed** candidate, with a
+  reason explicitly qualifying its precedence. Alternatives remain ordered.
+- `no-candidate`: no eligible candidate was observed. A complete miss and an
+  incomplete miss have different completeness and explanation, both with
+  `selected=null`. Empty PATH has zero attempts and is complete under this policy.
+
+Every retained failure makes collection incomplete. Failures exclusively after
+the first observed candidate do not invalidate that candidate's established
+precedence; they may conceal alternatives. A failure before a repeated later
+success remains unresolved even if the visible path repeats: observations are
+not an atomic snapshot. No completeness state promises later execution success.
+Scope, policy and claim strength remain `process-external`,
+`process-path-order-v1`, and `policy-only`; there is no probability score or
+enumeration-policy version bump.
+
+Exit codes do not change: 0 for a selected observed candidate (check
+`selection_status` for definitive precedence), 1 for no observed candidate (check
+completeness for unresolved attempts), and 2 for usage/operational errors. An
+incomplete inspection is retained evidence, not automatically a fatal error.
+
+### Presentation and doctor
+
+Human output shows completeness and selection status. Only incomplete attempts
+are expanded by default, with attempt number, PATH index, quoted operand,
+operation, category and diagnostic message. Normal negative attempts stay in the
+model/JSON to avoid a trace dump. Uncertain selection has an explicit heading
+and qualified reason. Both renderers consume the same completed report.
+
+Process command JSON version 2 gains `process_path` (raw value and original
+entries with `index`, `raw`, `value`), `inspection` (completeness and full ordered
+observations), and `selection_status`. Empty observation arrays remain arrays.
+Existing candidate `path_index` is unchanged. These are focused schema additions,
+not the F10 final compatibility freeze. PowerShell reports have no process
+inspection fields; their schema and shell selection remain unchanged.
+
+Doctor's `command_discovery` carries the same three additions plus the shared
+selection/no-candidate reason. Its discovery state becomes `uncertain` for an
+uncertain selection or incomplete miss, and its existing warning exit is 1.
+A later failure preserves `current`/`different` discovery but produces a warning
+for incomplete inspection. Existing executable-identity deduplication and lexical
+fallback remain unchanged; it does not remove observation history. The standalone
+`path` command's directory diagnostics and schema are unchanged.
+
+### Focused evidence
+
+`TestFilesystemObservationSilentLossRegression` uses only pre-F7 APIs. It runs
+real filesystem inspection for a complete miss, a malformed/overlong PATH operand,
+failure before a candidate, and failure after one. Both presentations must agree
+and leave a marker absent. Against parent `b883d841af906283718fa30906c5a1030f606a71`,
+all four cases failed because JSON had no retained observations; the two misses
+had identical no-candidate reasons, and the earlier failure still produced an
+unqualified first-observed selection reason. The same test passes after F7.
+
+Injected collector tests cover permission failures without flaky Windows ACL
+fixtures, Windows error mappings, PATH/name ordering, repeated entries, eligible
+and skipped files, wrapped errors, fatal eligibility and absolute-path conversion
+failure. Native Unix tests retain exact R4 target-mode outcomes, broken links,
+looping links, ENOTDIR, effective credentials and fatal ownership failures.
+The existing Windows/cmd/PowerShell oracle suites remain unchanged. Ubuntu/macOS
+native test jobs remain required; Windows-host cross-compilation proves only
+buildability, never native Unix runtime success.
+
 ## Deferred work
 
-F6 PowerShell 5.1 transport, F7 observation retention, F8 broader
+F6 PowerShell 5.1 transport, F8 broader
 oracles, F9 inspection routing/UX, and F10 final JSON compatibility remain
 separate missions. Naming, other shells, and package/version-manager intelligence
 are outside this change. Exact shell parity for recognized-suffix fallback,

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/adhamcodes/whichwhy/internal/pathdiag"
+	"github.com/adhamcodes/whichwhy/internal/processpath"
 	"github.com/adhamcodes/whichwhy/internal/resolution"
 )
 
@@ -29,17 +30,20 @@ type jsonCandidate struct {
 }
 
 type jsonDocument struct {
-	SchemaVersion     int             `json:"schema_version"`
-	Command           string          `json:"command"`
-	ResolutionScope   string          `json:"resolution_scope"`
-	Policy            string          `json:"policy"`
-	ClaimStrength     string          `json:"claim_strength"`
-	Shell             *jsonShell      `json:"shell,omitempty"`
-	Selected          *jsonCandidate  `json:"selected"`
-	Candidates        []jsonCandidate `json:"candidates"`
-	SelectionReason   string          `json:"selection_reason,omitempty"`
-	NoCandidateReason string          `json:"no_candidate_reason,omitempty"`
-	Limitations       []string        `json:"limitations"`
+	SchemaVersion     int                           `json:"schema_version"`
+	Command           string                        `json:"command"`
+	ResolutionScope   string                        `json:"resolution_scope"`
+	Policy            string                        `json:"policy"`
+	ClaimStrength     string                        `json:"claim_strength"`
+	Shell             *jsonShell                    `json:"shell,omitempty"`
+	Selected          *jsonCandidate                `json:"selected"`
+	Candidates        []jsonCandidate               `json:"candidates"`
+	SelectionReason   string                        `json:"selection_reason,omitempty"`
+	NoCandidateReason string                        `json:"no_candidate_reason,omitempty"`
+	Limitations       []string                      `json:"limitations"`
+	ProcessPath       *processpath.Path             `json:"process_path,omitempty"`
+	Inspection        *resolution.ProcessInspection `json:"inspection,omitempty"`
+	SelectionStatus   string                        `json:"selection_status,omitempty"`
 }
 
 type jsonPathEntry struct {
@@ -79,12 +83,17 @@ type jsonPlatform struct {
 }
 
 type jsonDoctorDiscovery struct {
-	State           string   `json:"state"`
-	PathSelected    string   `json:"path_selected,omitempty"`
-	ResolutionScope string   `json:"resolution_scope"`
-	Policy          string   `json:"policy"`
-	ClaimStrength   string   `json:"claim_strength"`
-	OtherCandidates []string `json:"other_candidates"`
+	State             string                        `json:"state"`
+	PathSelected      string                        `json:"path_selected,omitempty"`
+	ResolutionScope   string                        `json:"resolution_scope"`
+	Policy            string                        `json:"policy"`
+	ClaimStrength     string                        `json:"claim_strength"`
+	OtherCandidates   []string                      `json:"other_candidates"`
+	ProcessPath       *processpath.Path             `json:"process_path,omitempty"`
+	Inspection        *resolution.ProcessInspection `json:"inspection,omitempty"`
+	SelectionStatus   string                        `json:"selection_status,omitempty"`
+	SelectionReason   string                        `json:"selection_reason,omitempty"`
+	NoCandidateReason string                        `json:"no_candidate_reason,omitempty"`
 }
 
 type jsonDoctorDocument struct {
@@ -163,6 +172,9 @@ func commandJSONDocument(report resolution.Report) jsonDocument {
 		SelectionReason:   report.SelectionReason,
 		NoCandidateReason: report.NoCandidateReason,
 		Limitations:       report.Limitations,
+		ProcessPath:       report.ProcessPath,
+		Inspection:        report.Inspection,
+		SelectionStatus:   report.SelectionStatus,
 	}
 	if report.Shell != nil {
 		doc.Shell = &jsonShell{Name: report.Shell.Name, Version: report.Shell.Version, Edition: report.Shell.Edition}
@@ -237,12 +249,17 @@ func doctorJSONDocument(report doctorReport) jsonDoctorDocument {
 		},
 		RunningExecutable: report.RunningExecutable,
 		CommandDiscovery: jsonDoctorDiscovery{
-			State:           string(report.Discovery),
-			PathSelected:    pathSelected,
-			ResolutionScope: report.Resolution.Scope,
-			Policy:          report.Resolution.Policy,
-			ClaimStrength:   report.Resolution.ClaimStrength,
-			OtherCandidates: otherCandidates,
+			State:             string(report.Discovery),
+			PathSelected:      pathSelected,
+			ResolutionScope:   report.Resolution.Scope,
+			Policy:            report.Resolution.Policy,
+			ClaimStrength:     report.Resolution.ClaimStrength,
+			OtherCandidates:   otherCandidates,
+			ProcessPath:       report.Resolution.ProcessPath,
+			Inspection:        report.Resolution.Inspection,
+			SelectionStatus:   report.Resolution.SelectionStatus,
+			SelectionReason:   report.Resolution.SelectionReason,
+			NoCandidateReason: report.Resolution.NoCandidateReason,
 		},
 		Limitations: report.Resolution.Limitations,
 	}

@@ -60,6 +60,16 @@ func assertReportPresentations(t *testing.T, r resolution.Report) {
 	if doc.Policy != r.Policy || doc.ResolutionScope != r.Scope || doc.ClaimStrength != r.ClaimStrength || !reflect.DeepEqual(doc.Limitations, r.Limitations) || doc.SelectionReason != r.SelectionReason {
 		t.Fatalf("JSON changed report claim: %#v", doc)
 	}
+	if !reflect.DeepEqual(doc.Inspection, r.Inspection) || !reflect.DeepEqual(doc.ProcessPath, r.ProcessPath) || doc.SelectionStatus != r.SelectionStatus {
+		t.Fatalf("JSON changed completed observation evidence: %#v", doc)
+	}
+	if r.Inspection != nil {
+		for _, text := range []string{r.Inspection.Completeness, r.SelectionStatus} {
+			if !strings.Contains(human.String(), text) {
+				t.Fatalf("human omitted %q: %s", text, &human)
+			}
+		}
+	}
 	if r.Selected == nil {
 		if doc.Selected != nil || doc.NoCandidateReason != r.NoCandidateReason {
 			t.Fatalf("JSON fabricated selection: %#v", doc)

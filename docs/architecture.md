@@ -42,6 +42,15 @@ command renderers consume the completed report, as do doctor's discovery
 diagnostics and presentation. See [Resolution claims](resolution-policy.md) for
 the exact policy, limitations, and focused JSON schema change.
 
+Candidate-search observations retain every actual Stat attempt before candidate
+deduplication. The shared collector records semantic negative outcomes and
+failures; platform code still supplies names and eligibility. Resolution derives
+collection completeness and whether the selected observed candidate's precedence
+is definitive or uncertain. Presentation renders those completed semantics.
+Fatal policy-evaluation errors still abort collection rather than becoming a
+partial result. PATH directory diagnostics remain a separate view of the same
+parsed entry identities.
+
 ### 3. Diagnostics
 
 Diagnostics inspect a completed resolution result for suspicious but explainable states. Examples include stale search-path entries, duplicate entries, old installations shadowing newer ones, and supported toolchain mismatches.

@@ -24,9 +24,10 @@ type Candidate struct {
 
 // Result contains ordered process-visible external evidence, not a shell winner.
 type Result struct {
-	Command    string
-	Path       processpath.Path
-	Candidates []Candidate
+	Command      string
+	Path         processpath.Path
+	Candidates   []Candidate
+	Observations []Observation
 }
 
 // ResolveExternal finds external command candidates visible to the current process.
@@ -45,12 +46,11 @@ func resolveExternal(command, pathValue, pathExtValue string) (Result, error) {
 	}
 
 	path := processpath.Parse(pathValue)
-	candidates, err := findCandidates(command, path.Entries, pathExtValue)
+	evidence, err := findCandidates(command, path.Entries, pathExtValue)
 	if err != nil {
 		return Result{}, err
 	}
-	candidates = distinctCandidatePaths(candidates)
-	return Result{Command: command, Path: path, Candidates: candidates}, nil
+	return Result{Command: command, Path: path, Candidates: distinctCandidatePaths(evidence.Candidates), Observations: evidence.Observations}, nil
 }
 
 // distinctCandidatePaths removes repeated references to the same visible path while
@@ -76,12 +76,4 @@ func candidatePathKey(path string) string {
 		return strings.ToLower(key)
 	}
 	return key
-}
-
-func absolutePath(path string) string {
-	abs, err := filepath.Abs(path)
-	if err == nil {
-		return abs
-	}
-	return filepath.Clean(path)
 }

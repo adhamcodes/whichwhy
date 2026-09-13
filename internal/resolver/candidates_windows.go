@@ -12,28 +12,13 @@ import (
 
 var defaultPathExt = []string{".COM", ".EXE", ".BAT", ".CMD"}
 
-func findCandidates(command string, entries []processpath.Entry, pathExtValue string) ([]Candidate, error) {
-	candidates := make([]Candidate, 0)
-	names := windowsCandidateNames(command, pathExtValue)
+func findCandidates(command string, entries []processpath.Entry, pathExtValue string) (candidateEvidence, error) {
+	return findWindowsCandidates(command, entries, pathExtValue, os.Stat)
+}
 
-	for _, entry := range entries {
-		directory := entry.EffectiveValue()
-
-		for _, name := range names {
-			path := filepath.Join(directory, name)
-			info, err := os.Stat(path)
-			if err != nil || info.IsDir() {
-				continue
-			}
-
-			candidates = append(candidates, Candidate{
-				Path:           absolutePath(path),
-				DirectoryIndex: entry.Index - 1,
-			})
-		}
-	}
-
-	return candidates, nil
+func findWindowsCandidates(command string, entries []processpath.Entry, pathExtValue string, stat statFunc) (candidateEvidence, error) {
+	return collectCandidates(entries, windowsCandidateNames(command, pathExtValue), stat,
+		func(os.FileInfo) (bool, error) { return true, nil }, filepath.Abs)
 }
 
 func windowsCandidateNames(command, pathExtValue string) []string {

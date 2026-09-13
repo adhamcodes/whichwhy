@@ -29,13 +29,30 @@ type Shell struct {
 	Name, Version, Edition string
 }
 
+const (
+	InspectionComplete   = "complete"
+	InspectionIncomplete = "incomplete"
+	SelectionDefinitive  = "definitive"
+	SelectionUncertain   = "precedence-uncertain"
+	SelectionNone        = "no-candidate"
+)
+
+// ProcessInspection describes collection completeness, independently of the
+// evidence class and of whether failures could precede the selected candidate.
+type ProcessInspection struct {
+	Completeness string                 `json:"completeness"`
+	Observations []resolver.Observation `json:"observations"`
+}
+
 // Report is a completed selection under a named policy, never a promise of
 // successful execution. ClaimStrength describes the evidence class, including
 // when Selected is nil; nil means no observed candidate under this policy.
 type Report struct {
 	Command, Scope, Policy, ClaimStrength string
 	Shell                                 *Shell
-	ProcessPath                           *processpath.Path // Nil for shell-observed evidence.
+	ProcessPath                           *processpath.Path  // Nil for shell-observed evidence.
+	Inspection                            *ProcessInspection // Nil for shell-observed evidence.
+	SelectionStatus                       string             // Process selection only; definitive within this policy.
 	Selected                              *Candidate
 	Candidates                            []Candidate
 	Alternatives                          []Candidate
@@ -51,12 +68,14 @@ func ProcessExternal(evidence resolver.Result) Report {
 		Command: evidence.Command, Scope: ProcessScope, Policy: ProcessPolicy,
 		ClaimStrength:     PolicyOnly,
 		ProcessPath:       &evidence.Path,
+		Inspection:        &ProcessInspection{Completeness: InspectionComplete, Observations: append([]resolver.Observation{}, evidence.Observations...)},
+		SelectionStatus:   SelectionNone,
 		Candidates:        make([]Candidate, 0, len(evidence.Candidates)),
 		NoCandidateReason: "No external command candidate was observed under this process policy.",
 		Limitations: []string{
 			"The invoking shell was not observed; its selected command may differ, including current-directory, empty or quoted PATH entry behavior.",
 			"Shell-local aliases, functions, built-ins, cmdlets, and command caches are not inspected.",
-			"Filesystem observation failures and skipped candidates are not fully retained; no candidate does not prove the command is unavailable.",
+			"Filesystem observations are not atomic; no candidate does not prove the command is unavailable.",
 			"Candidate eligibility is a filesystem filter, not proof of successful execution or invoking-user permission.",
 		},
 	}
@@ -70,7 +89,29 @@ func ProcessExternal(evidence resolver.Result) Report {
 	for _, c := range evidence.Candidates {
 		r.Candidates = append(r.Candidates, Candidate{Type: "external", Path: c.Path, PathIndex: c.DirectoryIndex + 1})
 	}
-	return selectFirst(r, "First observed candidate in process-path-order-v1 enumeration order; shell selection is unknown.")
+	r = selectFirst(r, "First eligible candidate in process-path-order-v1 enumeration order; no earlier attempt was unresolved. Shell selection is unknown.")
+	seenCandidate, earlierFailure := false, false
+	for _, o := range evidence.Observations {
+		if o.Incomplete() {
+			r.Inspection.Completeness = InspectionIncomplete
+		}
+		if o.Status == resolver.ObservedError && !seenCandidate {
+			earlierFailure = true
+		}
+		if o.Status == resolver.ObservedCandidate {
+			seenCandidate = true
+		}
+	}
+	if r.Selected != nil {
+		r.SelectionStatus = SelectionDefinitive
+		if earlierFailure {
+			r.SelectionStatus = SelectionUncertain
+			r.SelectionReason = "Selected among observed eligible candidates only; an earlier unresolved attempt could precede this candidate. Process-policy precedence is uncertain; shell selection is unknown."
+		}
+	} else if r.Inspection.Completeness == InspectionIncomplete {
+		r.NoCandidateReason = "No external command candidate was observed; inspection was incomplete, so failed attempts may conceal eligible candidates."
+	}
+	return r
 }
 
 // PowerShell retains the order observed by passive discovery in the active
@@ -107,7 +148,8 @@ func selectFirst(r Report, reason string) Report {
 }
 
 // ExitCode preserves the CLI's found/no-observed-candidate distinction. Success
-// means a scoped selection exists, not that shell truth has been established.
+// means a scoped selection among observed candidates exists, including when its
+// precedence is uncertain. Retained failures are not fatal operational errors.
 func (r Report) ExitCode() int {
 	if r.Selected == nil {
 		return 1

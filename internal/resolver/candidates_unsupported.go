@@ -9,6 +9,6 @@ import (
 	"github.com/adhamcodes/whichwhy/internal/processpath"
 )
 
-func findCandidates(string, []processpath.Entry, string) ([]Candidate, error) {
-	return nil, fmt.Errorf("process candidate eligibility is unsupported on %s", runtime.GOOS)
+func findCandidates(string, []processpath.Entry, string) (candidateEvidence, error) {
+	return candidateEvidence{}, fmt.Errorf("process candidate eligibility is unsupported on %s", runtime.GOOS)
 }
