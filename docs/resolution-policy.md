@@ -220,7 +220,7 @@ PowerShell JSON is unchanged.
 
 ## Controlled Windows evidence
 
-`go test ./internal/cli -run TestWindowsPolicyVersusCmdOracle -v` runs three isolated
+`go test ./internal/cli -run TestWindowsPolicyVersusCmdOracle -v` runs five isolated
 cases with disposable, same-named `.cmd` files in the current directory and a
 PATH directory. With PATH containing only the latter, the policy selects the
 PATH file; fresh `cmd.exe /D /Q /C` executes the current-directory file. With a
@@ -229,6 +229,12 @@ Agreement in that second case does not upgrade the process evidence class.
 With an entirely empty PATH, the policy observes no candidates and exits 1,
 while cmd still executes the current-directory fixture. A null selection must
 therefore preserve uncertainty too.
+
+The release gate also checks normal PATH-only order without a cwd competitor,
+and duplicate PATH entries retaining the first producer's index. Cmd agrees on
+selection in those two cases; full candidate correlation remains a filesystem
+policy assertion. See the [oracle contract](oracle-contract.md) for the complete
+claim-to-oracle matrix and required native CI capabilities.
 
 Both human and JSON inspection run before the oracle and must leave an execution
 marker absent. Only the oracle executes the known fixture. `/D` disables cmd
@@ -277,7 +283,8 @@ creates disposable native executables and marker-writing `.cmd` fixtures. It
 compares standalone human/JSON inspection with fresh `cmd.exe /D /Q /C`
 invocation and fresh PowerShell `Get-Command -All -ListImported` discovery with
 module auto-loading disabled. It runs under the existing Windows Go CI job;
-an unavailable PowerShell executable is an explicit skipped subtest. Both
+an unavailable PowerShell executable fails required CI and may explicitly skip on
+constrained local hosts. Both
 PowerShell versions were available locally: 5.1.26100.9444 and 7.6.5.
 
 The controlled observations on that Windows host were:
@@ -572,8 +579,9 @@ buildability, never native Unix runtime success.
 
 ## Deferred work
 
-F8 broader oracles, F9 inspection routing/UX, and F10 final JSON compatibility remain
-separate missions. Naming, other shells, and package/version-manager intelligence
+F8 verification is specified in the [oracle contract](oracle-contract.md).
+F9 inspection routing/UX and F10 final JSON compatibility remain separate missions.
+Naming, other shells, and package/version-manager intelligence
 are outside this change. Exact shell parity for recognized-suffix fallback,
 literal extensionless discovery, and unusual PATHEXT parsing is also outside F4;
 the controlled differences above remain explicit process-policy limitations.

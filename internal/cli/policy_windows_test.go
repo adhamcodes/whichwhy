@@ -19,20 +19,34 @@ func TestWindowsPolicyVersusCmdOracle(t *testing.T) {
 	if _, err := os.Stat(cmdExe); err != nil {
 		t.Fatalf("cmd oracle unavailable: %v", err)
 	}
-	for _, name := range []string{"path-only", "leading-empty-entry", "empty-path"} {
+	for _, name := range []string{"normal-path-order", "duplicate-path", "implicit-cwd-difference", "leading-empty-entry", "empty-path"} {
 		t.Run(name, func(t *testing.T) {
-			cwd, pathDir := t.TempDir(), t.TempDir()
+			cwd, pathDir, lastDir := t.TempDir(), t.TempDir(), t.TempDir()
 			t.Chdir(cwd)
 			const probe = "wwpolicyoraclefixture"
-			for dir, label := range map[string]string{cwd: "cwd", pathDir: "path"} {
-				body := "@echo off\r\necho " + label + "\r\necho executed>oracle.marker\r\n"
+			for dir, label := range map[string]string{cwd: "cwd", pathDir: "path", lastDir: "last"} {
+				if dir == cwd && (name == "normal-path-order" || name == "duplicate-path") {
+					continue // No implicit cwd competitor in the PATH-order experiment.
+				}
+				body := "@echo off\r\necho " + label + "\r\necho " + label + ">oracle.marker\r\n"
 				if err := os.WriteFile(filepath.Join(dir, probe+".cmd"), []byte(body), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}
 			pathValue, selectedDir := pathDir, pathDir
 			wantCount, wantCode := 1, 0
+			oracleLabel, classification := "cwd", "EXPECTED AGREEMENT"
+			secondDir, secondIndex := pathDir, 2
 			switch name {
+			case "normal-path-order", "duplicate-path":
+				pathValue = pathDir + ";" + lastDir
+				wantCount, oracleLabel, secondDir = 2, "path", lastDir
+				if name == "duplicate-path" {
+					pathValue = pathDir + ";" + pathDir + ";" + lastDir
+					secondIndex = 3
+				}
+			case "implicit-cwd-difference":
+				classification = "EXPECTED DELIBERATE DIFFERENCE"
 			case "leading-empty-entry":
 				pathValue = ";" + pathDir
 				selectedDir = cwd
@@ -40,6 +54,7 @@ func TestWindowsPolicyVersusCmdOracle(t *testing.T) {
 			case "empty-path":
 				pathValue = ""
 				wantCount, wantCode = 0, 1
+				classification = "EXPECTED DELIBERATE DIFFERENCE"
 			}
 			t.Setenv("PATH", pathValue)
 			t.Setenv("PATHEXT", ".CMD")
@@ -66,7 +81,7 @@ func TestWindowsPolicyVersusCmdOracle(t *testing.T) {
 				if doc.Selected == nil || !strings.EqualFold(doc.Selected.Path, want) || doc.Selected.PathIndex != 1 || !strings.Contains(human.String(), doc.Selected.Path) {
 					t.Fatalf("unexpected selection: %s / %s", &human, &machine)
 				}
-				if wantCount == 2 && (!strings.EqualFold(doc.Candidates[1].Path, filepath.Join(pathDir, probe+".CMD")) || doc.Candidates[1].PathIndex != 2) {
+				if wantCount == 2 && (!strings.EqualFold(doc.Candidates[1].Path, filepath.Join(secondDir, probe+".CMD")) || doc.Candidates[1].PathIndex != secondIndex) {
 					t.Fatalf("candidate order changed: %s", &machine)
 				}
 			}
@@ -84,13 +99,13 @@ func TestWindowsPolicyVersusCmdOracle(t *testing.T) {
 				}
 			}
 			output, err := oracle.CombinedOutput()
-			if err != nil || strings.TrimSpace(string(output)) != "cwd" {
+			if err != nil || strings.TrimSpace(string(output)) != oracleLabel {
 				t.Fatalf("cmd oracle: %v %q", err, output)
 			}
-			if _, err := os.Stat("oracle.marker"); err != nil {
-				t.Fatalf("oracle fixture did not run: %v", err)
+			if marker, err := os.ReadFile("oracle.marker"); err != nil || strings.TrimSpace(string(marker)) != oracleLabel {
+				t.Fatalf("oracle fixture did not run as expected: %q %v", marker, err)
 			}
-			t.Logf("policy candidates=%d; cmd executed cwd fixture; case=%s", len(doc.Candidates), name)
+			t.Logf("%s: policy candidates=%d; cmd executed %s fixture; case=%s", classification, len(doc.Candidates), oracleLabel, name)
 		})
 	}
 }

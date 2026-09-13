@@ -7,6 +7,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $exe = (Resolve-Path -LiteralPath $ExecutablePath).Path
+. (Join-Path $PSScriptRoot 'powershell-oracle-helpers.ps1')
 
 if (-not $PreferenceCase) {
     # Every preference case gets a new process, including the truly absent case.
@@ -28,8 +29,8 @@ $oldModulePath = $env:PSModulePath
 
 function Assert-ModuleState([bool]$loaded) {
     if ((@(Microsoft.PowerShell.Core\Get-Module -Name $moduleName).Count -gt 0) -ne $loaded) { throw 'Module loaded state changed' }
-    if ([IO.File]::Exists($initMarker) -ne $loaded) { throw 'Unexpected module initialization' }
-    if ([IO.File]::Exists($bodyMarker)) { throw 'Inspected command body executed' }
+    if ((Test-OraclePathExists $initMarker) -ne $loaded) { throw 'Unexpected module initialization' }
+    if ((Test-OraclePathExists $bodyMarker)) { throw 'Inspected command body executed' }
 }
 
 function Get-ModuleSnapshot {
@@ -57,7 +58,7 @@ function Get-GlobalVariableNames {
     return $names -join "`n"
 }
 
-function Assert-Inspection([string]$name, [bool]$loaded, [string]$kind = '') {
+function Assert-Inspection([string]$name, [bool]$loaded, [string]$kind = '', [bool]$compareOracle = $false) {
     Assert-ModuleState $loaded
     $modulesBefore = Get-ModuleSnapshot
     $variablesBefore = Get-GlobalVariableNames
@@ -71,18 +72,33 @@ function Assert-Inspection([string]$name, [bool]$loaded, [string]$kind = '') {
     if ($doc.resolution_scope -ne 'powershell-loaded-session') { throw 'Unexpected resolution scope' }
     if ($doc.policy -ne 'powershell-loaded-session-order-v1' -or $doc.claim_strength -ne 'shell-observed') { throw 'Unexpected shell claim' }
     if ($doc.limitations -notcontains 'Unloaded module auto-loading is not modeled yet.') { throw 'Missing autoload limitation' }
-    if ($kind) {
-        if ($code -ne 0 -or $doc.selected.kind -ne $kind) { throw "Wrong loaded winner for $name" }
-        if ($name -eq $probe -and $doc.selected.source -ne $moduleName) { throw 'Wrong module source' }
-    } elseif ($code -ne 1 -or $null -ne $doc.selected -or $doc.candidates.Count -ne 0) {
-        throw "Unloaded command fabricated a winner for $name"
-    }
     $human = @(whichwhy $name) -join "`n"
     if ($LASTEXITCODE -ne $code) { throw 'Human/JSON exit status divergence' }
     Assert-PreferenceUnchanged
     Assert-ModuleState $loaded
     if ($modulesBefore -cne (Get-ModuleSnapshot)) { throw 'Human collector changed the loaded module set' }
     if ($variablesBefore -cne (Get-GlobalVariableNames)) { throw 'Human collector leaked global variables' }
+    if ($compareOracle) {
+        # Backticks participate in PowerShell's exact-name discovery semantics;
+        # creating a function alone does not establish Get-Command's result.
+        # Observe both presentations first, then ask the guarded real shell.
+        $oracle = @(Get-PassiveOracleMatches $name)
+        if ($doc.candidates.Count -ne $oracle.Count) { throw 'Literal candidate count differs from oracle' }
+        for ($i = 0; $i -lt $oracle.Count; $i++) { Assert-OracleCandidate $doc.candidates[$i] $oracle[$i] 'Literal candidate' }
+        if ($oracle.Count) {
+            $kind = ([string]$oracle[0].CommandType).ToLowerInvariant()
+            Assert-OracleCandidate $doc.selected $oracle[0] 'Literal selected'
+        }
+        Assert-PreferenceUnchanged
+        Assert-ModuleState $loaded
+        if ($modulesBefore -cne (Get-ModuleSnapshot) -or $variablesBefore -cne (Get-GlobalVariableNames)) { throw 'Literal oracle leaked session state' }
+    }
+    if ($kind) {
+        if ($code -ne 0 -or $doc.selected.kind -ne $kind) { throw "Wrong loaded winner for $name" }
+        if ($name -eq $probe -and $doc.selected.source -ne $moduleName) { throw 'Wrong module source' }
+    } elseif ($code -ne 1 -or $null -ne $doc.selected -or $doc.candidates.Count -ne 0) {
+        throw "Unloaded command fabricated a winner for $name"
+    }
     if ($kind) {
         if ($human -notmatch 'POWERSHELL WINNER') { throw 'Human output lost winner' }
     } elseif ($human -notmatch 'No command match was found in the current loaded PowerShell session') {
@@ -90,6 +106,7 @@ function Assert-Inspection([string]$name, [bool]$loaded, [string]$kind = '') {
     }
 }
 
+try {
 [void][IO.Directory]::CreateDirectory($moduleDir)
 [IO.File]::WriteAllText((Join-Path $moduleDir ($moduleName + '.psd1')), "@{ RootModule = '$moduleName.psm1'; ModuleVersion = '1.0'; FunctionsToExport = @('$probe') }")
 [IO.File]::WriteAllText((Join-Path $moduleDir ($moduleName + '.psm1')), @'
@@ -100,7 +117,7 @@ function Get-WhichWhyPassiveFixture {
 Export-ModuleMember -Function Get-WhichWhyPassiveFixture
 '@)
 
-try { & {
+& {
     $env:PSModulePath = "$lab;$oldModulePath"
     # Load the fixture's test helpers before measuring the collector's module set.
     Microsoft.PowerShell.Core\Import-Module Microsoft.PowerShell.Utility
@@ -170,10 +187,7 @@ try { & {
     # Literal punctuation stays a single exact-name argument, never evaluated.
     foreach ($literal in @('wwpassive;literal', 'wwpassive`literal', 'wwpassive(literal)', 'wwpassive literal', "wwpassive'literal")) {
         Set-Item -LiteralPath ("Function:global:" + $literal) -Value { throw 'Literal command executed' }
-        $oracle = @(Microsoft.PowerShell.Core\Get-Command -Name $literal -All -ListImported -ErrorAction SilentlyContinue)
-        $expectedKind = ''
-        if ($oracle.Count -gt 0) { $expectedKind = ([string]$oracle[0].CommandType).ToLowerInvariant() }
-        Assert-Inspection $literal $false $expectedKind
+        Assert-Inspection $literal $false '' $true
     }
     function global:Get-Command { throw 'Unqualified Get-Command executed' }
     Assert-Inspection $probe $false

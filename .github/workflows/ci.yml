@@ -32,6 +32,10 @@ jobs:
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    env:
+      # Required native capabilities may skip on constrained developer hosts,
+      # but a release runner must exercise them. See docs/oracle-contract.md.
+      WHICHWHY_REQUIRE_ORACLES: '1'
     strategy:
       fail-fast: false
       matrix:
@@ -47,8 +51,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Run tests
-        run: go test ./...
+      - name: Run tests including native process-policy oracles
+        run: go test ./... -count=1
       - name: Run vet
         run: go vet ./...
       - name: Build CLI
@@ -56,8 +60,8 @@ jobs:
       - name: PowerShell 5.1 oracle
         if: runner.os == 'Windows'
         shell: powershell
-        run: .\scripts\test-powershell-oracle.ps1 -ExecutablePath .\whichwhy.exe
+        run: .\scripts\test-powershell-oracle.ps1 -ExecutablePath .\whichwhy.exe -ExpectedMajor 5
       - name: PowerShell 7 oracle
         if: runner.os == 'Windows'
         shell: pwsh
-        run: .\scripts\test-powershell-oracle.ps1 -ExecutablePath .\whichwhy.exe
+        run: .\scripts\test-powershell-oracle.ps1 -ExecutablePath .\whichwhy.exe -ExpectedMajor 7
