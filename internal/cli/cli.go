@@ -121,6 +121,8 @@ func printCommandReport(stdout io.Writer, report resolution.Report) int {
 	} else {
 		if report.Scope == resolution.PowerShellScope {
 			fmt.Fprintln(stdout, "POWERSHELL WINNER (LOADED SESSION)")
+		} else if report.SelectionStatus == resolution.SelectionUncertain {
+			fmt.Fprintln(stdout, "PROCESS POLICY SELECTED CANDIDATE (PRECEDENCE UNCERTAIN)")
 		} else {
 			fmt.Fprintln(stdout, "PROCESS POLICY SELECTED CANDIDATE")
 		}
@@ -139,6 +141,14 @@ func printCommandReport(stdout io.Writer, report resolution.Report) int {
 
 func printClaim(stdout io.Writer, report resolution.Report) {
 	fmt.Fprintf(stdout, "\nRESOLUTION SCOPE\n  %s\nPOLICY\n  %s\nCLAIM STRENGTH\n  %s\n", report.Scope, report.Policy, report.ClaimStrength)
+	if report.Inspection != nil {
+		fmt.Fprintf(stdout, "\nFILESYSTEM INSPECTION\n  %s\nSELECTION STATUS\n  %s\n", report.Inspection.Completeness, report.SelectionStatus)
+		for _, o := range report.Inspection.Observations {
+			if o.Incomplete() {
+				fmt.Fprintf(stdout, "  Attempt #%d, PATH #%d, %q: %s (%s)\n    %s\n", o.Attempt, o.PathIndex, o.Path, o.Error.Category, o.Error.Operation, o.Error.Message)
+			}
+		}
+	}
 	if report.Shell != nil {
 		fmt.Fprintf(stdout, "\nSHELL\n  %s %s (%s)\n", report.Shell.Name, report.Shell.Version, report.Shell.Edition)
 	}

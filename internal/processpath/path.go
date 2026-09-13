@@ -10,17 +10,17 @@ import (
 
 // Path is one process PATH value and its ordered, unfiltered entry sequence.
 type Path struct {
-	Raw     string
-	Entries []Entry
+	Raw     string  `json:"raw_value"`
+	Entries []Entry `json:"entries"`
 }
 
 // Entry retains the original segment and the value interpreted by the process
 // policy. Index is one-based and never changes when entries fail inspection or
 // refer to the same directory. Relative values are not made absolute here.
 type Entry struct {
-	Index int
-	Raw   string
-	Value string
+	Index int    `json:"index"`
+	Raw   string `json:"raw"`
+	Value string `json:"value"`
 }
 
 // EffectiveValue is the directory operand used for filesystem inspection.

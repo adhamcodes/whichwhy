@@ -20,6 +20,7 @@ const (
 	doctorDiscoveryMissing   doctorDiscovery = "missing"
 	doctorDiscoveryCurrent   doctorDiscovery = "current"
 	doctorDiscoveryDifferent doctorDiscovery = "different"
+	doctorDiscoveryUncertain doctorDiscovery = "uncertain"
 )
 
 type doctorReport struct {
@@ -56,6 +57,9 @@ func inspectDoctor(version string, executable executableLocator, resolve externa
 	}
 
 	switch {
+	case resolved.SelectionStatus == resolution.SelectionUncertain || (resolved.Selected == nil && resolved.Inspection.Completeness == resolution.InspectionIncomplete):
+		report.Discovery = doctorDiscoveryUncertain
+		report.Status = 1
 	case resolved.Selected == nil:
 		report.Discovery = doctorDiscoveryMissing
 		report.Status = 1
@@ -65,7 +69,7 @@ func inspectDoctor(version string, executable executableLocator, resolve externa
 		report.Discovery = doctorDiscoveryDifferent
 		report.Status = 1
 	}
-	if len(candidates) > 1 {
+	if len(candidates) > 1 || resolved.Inspection.Completeness == resolution.InspectionIncomplete {
 		report.Status = 1
 	}
 	return report, nil
@@ -88,6 +92,11 @@ func printDoctorResult(stdout io.Writer, report doctorReport) int {
 	fmt.Fprintln(stdout, "\nCOMMAND DISCOVERY")
 
 	switch report.Discovery {
+	case doctorDiscoveryUncertain:
+		fmt.Fprintln(stdout, "  WARNING  Incomplete inspection prevents definitive process-policy discovery for 'whichwhy'.")
+		if report.Resolution.Selected != nil {
+			fmt.Fprintf(stdout, "           Selected among observed candidates: %s\n", report.Resolution.Selected.Path)
+		}
 	case doctorDiscoveryMissing:
 		fmt.Fprintln(stdout, "  WARNING  No 'whichwhy' candidate was observed under the process policy.")
 	case doctorDiscoveryCurrent:
