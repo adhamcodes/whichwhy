@@ -58,51 +58,54 @@ function Get-GlobalVariableNames {
     return $names -join "`n"
 }
 
-function Assert-Inspection([string]$name, [bool]$loaded, [string]$kind = '', [bool]$compareOracle = $false) {
-    Assert-ModuleState $loaded
-    $modulesBefore = Get-ModuleSnapshot
-    $variablesBefore = Get-GlobalVariableNames
-    $text = @(whichwhy $name --json)
-    $code = $LASTEXITCODE
-    Assert-PreferenceUnchanged
-    Assert-ModuleState $loaded
-    if ($modulesBefore -cne (Get-ModuleSnapshot)) { throw 'Collector changed the loaded module set' }
-    if ($variablesBefore -cne (Get-GlobalVariableNames)) { throw 'Collector leaked global variables' }
-    $doc = ($text -join "`n") | ConvertFrom-Json
-    if ($doc.resolution_scope -ne 'powershell-loaded-session') { throw 'Unexpected resolution scope' }
-    if ($doc.policy -ne 'powershell-loaded-session-order-v1' -or $doc.claim_strength -ne 'shell-observed') { throw 'Unexpected shell claim' }
-    if ($doc.limitations -notcontains 'Unloaded module auto-loading is not modeled yet.') { throw 'Missing autoload limitation' }
-    $human = @(whichwhy $name) -join "`n"
-    if ($LASTEXITCODE -ne $code) { throw 'Human/JSON exit status divergence' }
-    Assert-PreferenceUnchanged
-    Assert-ModuleState $loaded
-    if ($modulesBefore -cne (Get-ModuleSnapshot)) { throw 'Human collector changed the loaded module set' }
-    if ($variablesBefore -cne (Get-GlobalVariableNames)) { throw 'Human collector leaked global variables' }
-    if ($compareOracle) {
-        # Backticks participate in PowerShell's exact-name discovery semantics;
-        # creating a function alone does not establish Get-Command's result.
-        # Observe both presentations first, then ask the guarded real shell.
-        $oracle = @(Get-PassiveOracleMatches $name)
-        if ($doc.candidates.Count -ne $oracle.Count) { throw 'Literal candidate count differs from oracle' }
-        for ($i = 0; $i -lt $oracle.Count; $i++) { Assert-OracleCandidate $doc.candidates[$i] $oracle[$i] 'Literal candidate' }
-        if ($oracle.Count) {
-            $kind = ([string]$oracle[0].CommandType).ToLowerInvariant()
-            Assert-OracleCandidate $doc.selected $oracle[0] 'Literal selected'
-        }
+function Assert-Inspection([string]$name, [bool]$loaded, [string]$kind = '', [bool]$compareOracle = $false, [bool]$literalOnly = $false) {
+    foreach ($literalMode in @($false, $true)) {
+        if (($literalMode -and $compareOracle) -or ($literalOnly -and -not $literalMode)) { continue }
+        Assert-ModuleState $loaded
+        $modulesBefore = Get-ModuleSnapshot
+        $variablesBefore = Get-GlobalVariableNames
+        if ($literalMode) { $text = @(whichwhy inspect $name --json) } else { $text = @(whichwhy $name --json) }
+        $code = $LASTEXITCODE
         Assert-PreferenceUnchanged
         Assert-ModuleState $loaded
-        if ($modulesBefore -cne (Get-ModuleSnapshot) -or $variablesBefore -cne (Get-GlobalVariableNames)) { throw 'Literal oracle leaked session state' }
-    }
-    if ($kind) {
-        if ($code -ne 0 -or $doc.selected.kind -ne $kind) { throw "Wrong loaded winner for $name" }
-        if ($name -eq $probe -and $doc.selected.source -ne $moduleName) { throw 'Wrong module source' }
-    } elseif ($code -ne 1 -or $null -ne $doc.selected -or $doc.candidates.Count -ne 0) {
-        throw "Unloaded command fabricated a winner for $name"
-    }
-    if ($kind) {
-        if ($human -notmatch 'POWERSHELL WINNER') { throw 'Human output lost winner' }
-    } elseif ($human -notmatch 'No command match was found in the current loaded PowerShell session') {
-        throw 'Human output lost loaded-session limitation'
+        if ($modulesBefore -cne (Get-ModuleSnapshot)) { throw 'Collector changed the loaded module set' }
+        if ($variablesBefore -cne (Get-GlobalVariableNames)) { throw 'Collector leaked global variables' }
+        $doc = ($text -join "`n") | ConvertFrom-Json
+        if ($doc.resolution_scope -ne 'powershell-loaded-session') { throw 'Unexpected resolution scope' }
+        if ($doc.policy -ne 'powershell-loaded-session-order-v1' -or $doc.claim_strength -ne 'shell-observed') { throw 'Unexpected shell claim' }
+        if ($doc.limitations -notcontains 'Unloaded module auto-loading is not modeled yet.') { throw 'Missing autoload limitation' }
+        if ($literalMode) { $human = @(whichwhy inspect $name) -join "`n" } else { $human = @(whichwhy $name) -join "`n" }
+        if ($LASTEXITCODE -ne $code) { throw 'Human/JSON exit status divergence' }
+        Assert-PreferenceUnchanged
+        Assert-ModuleState $loaded
+        if ($modulesBefore -cne (Get-ModuleSnapshot)) { throw 'Human collector changed the loaded module set' }
+        if ($variablesBefore -cne (Get-GlobalVariableNames)) { throw 'Human collector leaked global variables' }
+        if ($compareOracle) {
+            # Backticks participate in PowerShell's exact-name discovery semantics;
+            # creating a function alone does not establish Get-Command's result.
+            # Observe both presentations first, then ask the guarded real shell.
+            $oracle = @(Get-PassiveOracleMatches $name)
+            if ($doc.candidates.Count -ne $oracle.Count) { throw 'Literal candidate count differs from oracle' }
+            for ($i = 0; $i -lt $oracle.Count; $i++) { Assert-OracleCandidate $doc.candidates[$i] $oracle[$i] 'Literal candidate' }
+            if ($oracle.Count) {
+                $kind = ([string]$oracle[0].CommandType).ToLowerInvariant()
+                Assert-OracleCandidate $doc.selected $oracle[0] 'Literal selected'
+            }
+            Assert-PreferenceUnchanged
+            Assert-ModuleState $loaded
+            if ($modulesBefore -cne (Get-ModuleSnapshot) -or $variablesBefore -cne (Get-GlobalVariableNames)) { throw 'Literal oracle leaked session state' }
+        }
+        if ($kind) {
+            if ($code -ne 0 -or $doc.selected.kind -ne $kind) { throw "Wrong loaded winner for $name" }
+            if ($name -eq $probe -and $doc.selected.source -ne $moduleName) { throw 'Wrong module source' }
+        } elseif ($code -ne 1 -or $null -ne $doc.selected -or $doc.candidates.Count -ne 0) {
+            throw "Unloaded command fabricated a winner for $name"
+        }
+        if ($kind) {
+            if ($human -notmatch 'POWERSHELL WINNER') { throw 'Human output lost winner' }
+        } elseif ($human -notmatch 'No command match was found in the current loaded PowerShell session') {
+            throw 'Human output lost loaded-session limitation'
+        }
     }
 }
 
@@ -124,6 +127,7 @@ Export-ModuleMember -Function Get-WhichWhyPassiveFixture
     $init = (& $exe init powershell) -join "`n"
     if ($LASTEXITCODE -ne 0) { throw 'Bridge generation failed' }
     Invoke-Expression $init
+    Set-Alias -Name 'ww*passivef9' -Value $probe -Scope Global
 
     switch ($PreferenceCase) {
         'Absent' { $ExecutionContext.SessionState.PSVariable.Remove('global:PSModuleAutoLoadingPreference') }
@@ -157,9 +161,17 @@ Export-ModuleMember -Function Get-WhichWhyPassiveFixture
         # Immutable or coercing preferences must fail closed, even under the
         # usual nonterminating-error preference. Never force caller options.
         $ErrorActionPreference = 'Continue'
-        $failed = $false
-        try { whichwhy $probe --json } catch { $failed = $true }
-        if (-not $failed) { throw 'Constrained autoload preference did not fail closed' }
+        foreach ($literalMode in @($false, $true)) {
+            $failed = $false
+            try {
+                if ($literalMode) { whichwhy inspect 'ww*passivef9' --json }
+                else { whichwhy $probe --json }
+            } catch { $failed = $true }
+            if (-not $failed) { throw 'Constrained autoload preference did not fail closed' }
+            if ($literalMode -and $LASTEXITCODE -ne 2) { throw 'Explicit operational failure did not retain exit 2' }
+            Assert-PreferenceUnchanged
+            Assert-ModuleState $false
+        }
         Assert-PreferenceUnchanged
         Assert-ModuleState $false
         [Console]::WriteLine("PASS [passive/$PreferenceCase] safely refused inspection; PowerShell $($PSVersionTable.PSVersion)")
@@ -169,6 +181,7 @@ Export-ModuleMember -Function Get-WhichWhyPassiveFixture
     if ($available.Count -ne 1) { throw 'Disposable module is not discoverable' }
     Assert-ModuleState $false
     Assert-Inspection $probe $false
+    Assert-Inspection 'ww*passivef9' $false 'alias' $false $true
     Assert-Inspection "$moduleName\$probe" $false
     # Preserve the existing routing for wildcard names:
     # these are explicitly process-external, never claimed as shell evidence.
