@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 const recordSeparator = "\x1f"
@@ -30,9 +31,19 @@ type Evidence struct {
 	Matches []Match
 }
 
-// DecodeEvidence converts the bridge arguments into typed PowerShell evidence.
-func DecodeEvidence(command, version, edition string, encodedRecords []string) (Evidence, error) {
-	if command == "" {
+// DecodeEvidence converts the hidden entrypoint arguments into typed evidence.
+// encodedCommand is canonical padded Base64 of nonempty UTF-8, never a raw name.
+// Human and JSON callers decode here once, before resolution or presentation.
+func DecodeEvidence(encodedCommand, version, edition string, encodedRecords []string) (Evidence, error) {
+	command, err := base64.StdEncoding.Strict().DecodeString(encodedCommand)
+	// Go's Base64 decoder ignores CR/LF even in Strict mode; the protocol does not.
+	if err != nil || strings.ContainsAny(encodedCommand, "\r\n") {
+		return Evidence{}, errors.New("malformed PowerShell command: expected canonical padded base64")
+	}
+	if !utf8.Valid(command) {
+		return Evidence{}, errors.New("malformed PowerShell command: invalid UTF-8")
+	}
+	if len(command) == 0 {
 		return Evidence{}, errors.New("PowerShell command name is empty")
 	}
 
@@ -58,7 +69,7 @@ func DecodeEvidence(command, version, edition string, encodedRecords []string) (
 	}
 
 	return Evidence{
-		Command: command,
+		Command: string(command),
 		Version: version,
 		Edition: edition,
 		Matches: matches,

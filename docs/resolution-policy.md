@@ -116,8 +116,61 @@ No Go code emulates shell precedence. Shell version and edition stay attached.
 
 This claim covers discovery in the observed loaded session, not successful
 invocation. Unloaded-module auto-loading remains unmodeled; even a discovered
-alias does not prove its target can execute. The F1 collector guard and transport
-are unchanged. No discovery probe executes the inspected command.
+alias does not prove its target can execute. The F1 collector guard is unchanged.
+No discovery probe executes the inspected command.
+
+### Internal command transport (R6 / F6)
+
+Both `__powershell` and `__powershell-json` accept the same positional arguments:
+`<base64-command> <version> <edition> [base64-record ...]`. The first argument is
+canonical, padded standard Base64 of the command's UTF-8 bytes. There is no raw
+command fallback or format autodetection. Regenerate the session bridge with
+`whichwhy init powershell` after upgrading from the previous internal protocol.
+
+PowerShell 5.1 and 7 both encode with
+`[Convert]::ToBase64String([Text.UTF8Encoding]::new($false, $true).GetBytes($command))`
+after passive discovery and restoration of the autoload preference. This emits
+no BOM or line wrapping and rejects unpaired UTF-16 surrogates instead of silently
+replacing them. Base64 contains no whitespace, quotes, or backslashes that could
+change legacy native argument boundaries. Only the command is newly encoded:
+the shell-provided version's numeric/dotted or prerelease spelling and the known
+edition values `Desktop`/`Core` are quoting-safe. No broader envelope is needed.
+
+`powershell.DecodeEvidence` decodes the command exactly once, before constructing
+typed evidence. It rejects invalid Base64, noncanonical padding bits, CR/LF,
+invalid UTF-8, and an empty decoded command. Both hidden endpoints return exit 2
+with a `whichwhy:` error and no report on malformed requests, including incomplete
+arguments. No partial decode is accepted. Valid command bytes are not trimmed,
+case-folded, Unicode-normalized, or decoded again by resolution or presentation.
+Whitespace-only strings are nonempty at the codec boundary. Invalid UTF-16 in the
+PowerShell caller fails with an encoding exception before a native request exists.
+
+The evidence records retain their previous Base64 encoding, five-field ordering
+(type, name, source, path, alias target), separator, and semantics. Resolution
+ordering, scope, policy, claim strength, and human/JSON schema are unchanged.
+Wildcard and reserved-word routing still belongs to F9 and can bypass this bridge;
+this contract applies to the hidden evidence endpoints, not general CLI forwarding.
+
+`scripts/test-powershell-transport.ps1` tests the actual generated bridge and native
+CLI in fresh Windows PowerShell 5.1 and PowerShell 7 processes. It is also called
+by the existing oracle suite in Windows CI. Tests compare command names and human
+headings using ordinal equality, and candidates against passive `Get-Command`.
+Real session aliases cover normal names, spaces, apostrophes, quotes, punctuation,
+Unicode (including combining and supplementary characters), and a Base64-looking
+name that detects double decoding. Backslash and mixed quote/backslash cases use
+missing qualified names: PowerShell interprets backslashes as path/module
+qualification, so those cases do not claim exact-name alias discovery. Markers
+must remain absent. Malformed native requests and unpaired UTF-16 are also tested.
+The test harness temporarily selects UTF-8 stdout decoding and restores it;
+terminal code-page configuration is separate from the request protocol.
+
+Against pre-F6 commit `be55f0eb5970cf589cf9bd3544de60dfbce1d18e`, Windows
+PowerShell 5.1.26100.9444 changed `name"with"quote` to `namewithquote` and disrupted
+the arguments for `mixed space "quote" \end\` and `mixed \"quote" space\`.
+PowerShell 7.6.5's default native argument mode passed those same fixtures.
+The encoded bridge passes all 15 identity fixtures on both versions, including
+both human and JSON output; the existing oracle and F1 passive suites remain
+required. These are Windows native-boundary results, not Unix runtime evidence.
 
 ## Shared result and presentation
 
@@ -519,8 +572,7 @@ buildability, never native Unix runtime success.
 
 ## Deferred work
 
-F6 PowerShell 5.1 transport, F8 broader
-oracles, F9 inspection routing/UX, and F10 final JSON compatibility remain
+F8 broader oracles, F9 inspection routing/UX, and F10 final JSON compatibility remain
 separate missions. Naming, other shells, and package/version-manager intelligence
 are outside this change. Exact shell parity for recognized-suffix fallback,
 literal extensionless discovery, and unusual PATHEXT parsing is also outside F4;

@@ -108,3 +108,4 @@ finally {
 }
 
 & (Join-Path $PSScriptRoot 'test-powershell-passive.ps1') -ExecutablePath $exe
+& (Join-Path $PSScriptRoot 'test-powershell-transport.ps1') -ExecutablePath $exe
