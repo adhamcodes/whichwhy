@@ -7,6 +7,8 @@ param(
 # belong to F9 and are deliberately excluded from these real bridge fixtures.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Microsoft.PowerShell.Core\Import-Module Microsoft.PowerShell.Utility, Microsoft.PowerShell.Management
+. (Join-Path $PSScriptRoot 'powershell-oracle-helpers.ps1')
 $exe = (Resolve-Path -LiteralPath $ExecutablePath).Path
 $marker = Join-Path ([IO.Path]::GetTempPath()) ('whichwhy-transport-' + [guid]::NewGuid().ToString('N') + '.marker')
 $oldEncoding = [Console]::OutputEncoding
@@ -44,7 +46,7 @@ function Assert-Ordinal([string]$actual, [string]$expected, [string]$context) {
     }
 }
 
-try {
+try { & {
     # Decode the CLI's UTF-8 stdout explicitly; this tests request transport
     # independently of the caller's console code page. Restore it in finally.
     [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
@@ -63,16 +65,22 @@ try {
         $aliasFixture = -not $name.Contains('\')
         try {
             if ($aliasFixture) { Set-Alias -Name $name -Value Write-WhichWhyTransportMarker -Scope Script }
-            $oracle = @(Microsoft.PowerShell.Core\Get-Command -Name $name -All -ListImported -ErrorAction SilentlyContinue)
+            $before = Get-OracleSessionSnapshot
+            $json = @(whichwhy $name --json)
+            $jsonCode = $LASTEXITCODE
+            Assert-OracleText (Get-OracleSessionSnapshot) $before 'JSON transport session'
+            if ((Test-OraclePathExists $marker)) { throw 'JSON inspection executed fixture' }
+            $human = @(whichwhy $name)
+            $humanCode = $LASTEXITCODE
+            Assert-OracleText (Get-OracleSessionSnapshot) $before 'Human transport session'
+            if ((Test-OraclePathExists $marker)) { throw 'Human inspection executed fixture' }
+            $oracle = @(Get-PassiveOracleMatches $name)
+            Assert-OracleText (Get-OracleSessionSnapshot) $before 'Transport oracle session'
             if ($aliasFixture) {
                 if ($oracle.Count -eq 0) { throw 'Alias fixture was not discovered' }
                 Assert-Ordinal ([string]$oracle[0].Name) $name 'Get-Command fixture'
             } elseif ($oracle.Count -ne 0) { throw 'Expected a controlled missing qualified name' }
 
-            $json = @(whichwhy $name --json)
-            $jsonCode = $LASTEXITCODE
-            $human = @(whichwhy $name)
-            $humanCode = $LASTEXITCODE
             $doc = ($json -join "`n") | ConvertFrom-Json
             Assert-Ordinal ([string]$doc.command) $name 'JSON command'
             Assert-Ordinal ([string]$human[0]) ('WhichWhy ' + [char]0x2014 + ' ' + $name) 'Human heading'
@@ -82,19 +90,17 @@ try {
             Assert-Ordinal ([string]$doc.shell.edition) ([string]$PSVersionTable.PSEdition) 'Edition'
             if ($doc.candidates.Count -ne $oracle.Count) { throw 'Candidate count changed' }
             for ($i = 0; $i -lt $oracle.Count; $i++) {
-                Assert-Ordinal ([string]$doc.candidates[$i].name) ([string]$oracle[$i].Name) "Candidate $i name"
-                Assert-Ordinal ([string]$doc.candidates[$i].kind) ([string]$oracle[$i].CommandType).ToLowerInvariant() "Candidate $i kind"
-                Assert-Ordinal ([string]$doc.candidates[$i].alias_target) ([string]$oracle[$i].Definition) "Candidate $i target"
+                Assert-OracleCandidate $doc.candidates[$i] $oracle[$i] "Candidate $i"
             }
             if ($aliasFixture) {
-                Assert-Ordinal ([string]$doc.selected.name) $name 'Selected name'
+                Assert-OracleCandidate $doc.selected $oracle[0] 'Selected'
             } elseif ($null -ne $doc.selected) { throw 'Missing name fabricated a selection' }
             [Console]::WriteLine("PASS [transport] $name (alias fixture=$aliasFixture)")
         } catch {
             $failures += "${name}: $_"
         } finally {
             if ($aliasFixture) { Remove-Item -LiteralPath ('Alias:' + $name) -Force -ErrorAction SilentlyContinue }
-            if ([IO.File]::Exists($marker)) { throw 'Inspected fixture executed' }
+            if ((Test-OraclePathExists $marker)) { throw 'Inspected fixture executed' }
         }
     }
     if ($failures.Count -gt 0) { throw ($failures -join "`n") }
@@ -111,7 +117,7 @@ try {
                 $process.StartInfo.CreateNoWindow = $true
                 $process.StartInfo.RedirectStandardOutput = $true
                 $process.StartInfo.RedirectStandardError = $true
-                [void]$process.Start()
+                if (-not $process.Start()) { throw 'Malformed-request process did not launch' }
                 $output = $process.StandardOutput.ReadToEnd()
                 $errorText = $process.StandardError.ReadToEnd()
                 $process.WaitForExit()
@@ -133,14 +139,14 @@ try {
         $rejected = $true
     }
     if (-not $rejected) { throw 'Bridge silently replaced an invalid UTF-16 surrogate' }
-    if ([IO.File]::Exists($marker)) { throw 'Inspected fixture executed' }
+    if ((Test-OraclePathExists $marker)) { throw 'Inspected fixture executed' }
     [Console]::WriteLine('PASS [transport] invalid UTF-16 rejected before native transport')
     [Console]::WriteLine("PASS [transport] all $($names.Count) identities; no fixture executed; PowerShell $($PSVersionTable.PSVersion) $($PSVersionTable.PSEdition)")
-} finally {
+} } finally {
     Remove-Item -LiteralPath 'Function:whichwhy' -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath 'Function:Write-WhichWhyTransportMarker' -Force -ErrorAction SilentlyContinue
     [Console]::OutputEncoding = $oldEncoding
     if ($null -eq $oldAutoLoading) { $ExecutionContext.SessionState.PSVariable.Remove('global:PSModuleAutoLoadingPreference') }
     else { $oldAutoLoading.Value = $oldAutoLoadingValue }
-    if ([IO.File]::Exists($marker)) { [IO.File]::Delete($marker) }
+    if ((Test-OraclePathExists $marker)) { [IO.File]::Delete($marker) }
 }

@@ -21,6 +21,9 @@ import (
 // fixture makes .EXE and literal dotted files real executables, not fake binaries.
 func TestWindowsDottedPATHEXTOracles(t *testing.T) {
 	cmdExe := filepath.Join(os.Getenv("SystemRoot"), "System32", "cmd.exe")
+	if _, err := os.Stat(cmdExe); err != nil {
+		t.Fatalf("cmd oracle unavailable: %v", err)
+	}
 	shells := make(map[string]string)
 	for _, name := range []string{"powershell.exe", "pwsh.exe"} {
 		if path, err := exec.LookPath(name); err == nil {
@@ -120,11 +123,11 @@ func main() {
 				t.Run(name, func(t *testing.T) {
 					path, ok := shells[name]
 					if !ok {
-						t.Skipf("%s unavailable", name)
+						unavailableOracle(t, "%s unavailable", name)
 					}
 					// A fresh child session; only core discovery, no auto-import or
 					// invocation. Fixture command names are fixed safe test literals.
-					script := "$PSModuleAutoLoadingPreference='None'; [Console]::WriteLine($PSVersionTable.PSVersion.ToString()); foreach ($c in @(Microsoft.PowerShell.Core\\Get-Command -Name '" + tc.command + "' -All -ListImported -ErrorAction SilentlyContinue)) { [Console]::WriteLine($c.Path) }"
+					script := "$ErrorActionPreference='Stop'; $PSModuleAutoLoadingPreference='None'; [Console]::WriteLine('oracle-start:' + $PSVersionTable.PSVersion.ToString()); $failures=@(); $matches=@(Microsoft.PowerShell.Core\\Get-Command -Name '" + tc.command + "' -All -ListImported -ErrorAction SilentlyContinue -ErrorVariable failures); foreach ($failure in $failures) { if ($failure.Exception -isnot [System.Management.Automation.CommandNotFoundException]) { throw $failure } }; foreach ($c in $matches) { [Console]::WriteLine($c.Path) }; [Console]::WriteLine('oracle-complete')"
 					units := utf16.Encode([]rune(script))
 					encoded := make([]byte, len(units)*2)
 					for i, unit := range units {
@@ -135,8 +138,12 @@ func main() {
 						t.Fatalf("PowerShell discovery: %v: %s", err, output)
 					}
 					lines := strings.Split(strings.ReplaceAll(strings.TrimSpace(string(output)), "\r", ""), "\n")
-					if len(lines) != len(tc.ps)+1 {
-						t.Fatalf("PowerShell list = %q, want version + %q", lines, tc.ps)
+					major := "5.1."
+					if name == "pwsh.exe" {
+						major = "7."
+					}
+					if len(lines) != len(tc.ps)+2 || !strings.HasPrefix(lines[0], "oracle-start:"+major) || lines[len(lines)-1] != "oracle-complete" {
+						t.Fatalf("PowerShell list = %q, want version + %q + completion", lines, tc.ps)
 					}
 					for i, want := range tc.ps {
 						if !strings.EqualFold(lines[i+1], filepath.Join(dir, want)) {
@@ -169,7 +176,16 @@ func main() {
 					t.Fatalf("cmd execution marker = %q, %v", marker, err)
 				}
 			}
-			t.Logf("cmd selected %q; process policy: %v", tc.cmd, tc.policy)
+			// Selection agreement is distinct from PowerShell's broader candidate
+			// list for recognized suffixes and literal extensionless names.
+			classification := "EXPECTED AGREEMENT"
+			if tc.name == "recognized-missing" {
+				classification = "EXPECTED DELIBERATE DIFFERENCE"
+			}
+			if !strings.Contains(human.String(), "shell was not observed") {
+				t.Fatalf("missing process-policy limitation: %s", &human)
+			}
+			t.Logf("%s: cmd selected %q; process policy: %v", classification, tc.cmd, tc.policy)
 		})
 	}
 }

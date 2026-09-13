@@ -60,7 +60,7 @@ func TestUnixEligibilityPATHCorrelation(t *testing.T) {
 // leave its marker absent; direct child execution provides the kernel oracle.
 func TestUnixOwnerEligibilityOracle(t *testing.T) {
 	if os.Geteuid() == 0 {
-		t.Skip("owner-class denial requires an unprivileged effective UID; root mode policy has separate unit/target coverage")
+		unavailableOracle(t, "owner-class denial requires an unprivileged effective UID; root mode policy has separate unit/target coverage")
 	}
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -75,27 +75,41 @@ func TestUnixOwnerEligibilityOracle(t *testing.T) {
 		t.Fatal(err)
 	}
 	if info.Sys().(*syscall.Stat_t).Uid != uint32(os.Geteuid()) {
-		t.Skip("filesystem did not assign fixture ownership to the effective test user")
+		unavailableOracle(t, "filesystem did not assign fixture ownership to the effective test user")
 	}
 	// Verify that this location and known interpreter permit script execution
 	// before interpreting an EACCES result as evidence of mode-class denial.
 	if err := os.Chmod(path, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("PATH", dir)
+	// Even the execution control follows inspection, so an inspection regression
+	// cannot be hidden by first creating and then removing the control marker.
+	for _, args := range [][]string{{name}, {name, "--json"}} {
+		var stdout, stderr bytes.Buffer
+		if code := Run(args, &stdout, &stderr, "test"); code != 0 || stderr.Len() != 0 {
+			t.Fatalf("control inspection exit=%d: %s %s", code, &stdout, &stderr)
+		}
+		if _, err := os.Stat("inspected.marker"); !os.IsNotExist(err) {
+			t.Fatalf("control inspection executed fixture or marker check failed: %v", err)
+		}
+	}
 	output, err := exec.Command(path).CombinedOutput()
 	if err != nil {
 		if errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM) || errors.Is(err, os.ErrNotExist) {
-			t.Skipf("0700 control cannot execute here (mount/platform restriction or unavailable /bin/sh): %v", err)
+			unavailableOracle(t, "0700 control cannot execute here (mount/platform restriction or unavailable /bin/sh): %v", err)
 		}
 		t.Fatalf("0700 control failed: %v %s", err, output)
 	}
 	if string(output) != "fixture-ok" {
 		t.Fatalf("unexpected control output: %q", output)
 	}
+	if marker, err := os.ReadFile("inspected.marker"); err != nil || string(marker) != "executed" {
+		t.Fatalf("control execution marker: %q %v", marker, err)
+	}
 	if err := os.Remove("inspected.marker"); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", dir)
 	for _, bits := range []os.FileMode{0o100, 0o010, 0o001, 0o011, 0o111, 0} {
 		t.Run(fmt.Sprintf("execute-bits-%04o", bits), func(t *testing.T) {
 			// Owner read is necessary for /bin/sh to read the script after exec.

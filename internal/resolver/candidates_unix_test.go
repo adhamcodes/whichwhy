@@ -28,6 +28,9 @@ func TestUnixCandidateTargetModes(t *testing.T) {
 		t.Fatal(err)
 	}
 	if stat := info.Sys().(*syscall.Stat_t); stat.Uid != uint32(os.Geteuid()) {
+		if os.Getenv("WHICHWHY_REQUIRE_ORACLES") == "1" {
+			t.Fatalf("required fixture owner %d differs from effective UID %d", stat.Uid, os.Geteuid())
+		}
 		t.Skipf("fixture owner %d differs from effective UID %d", stat.Uid, os.Geteuid())
 	}
 	for _, mode := range []os.FileMode{0o100, 0o010, 0o001, 0o011, 0o111, 0} {

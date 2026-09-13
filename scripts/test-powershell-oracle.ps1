@@ -1,111 +1,107 @@
 param(
     [Parameter(Mandatory = $true)]
-    [string]$ExecutablePath
+    [string]$ExecutablePath,
+    [int]$ExpectedMajor = 0
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-
+if ($ExpectedMajor -and $PSVersionTable.PSVersion.Major -ne $ExpectedMajor) { throw 'Wrong PowerShell version for required gate' }
+if ($ExpectedMajor -eq 5 -and $PSVersionTable.PSVersion.Minor -ne 1) { throw 'Required Windows PowerShell 5.1 gate' }
+Microsoft.PowerShell.Core\Import-Module Microsoft.PowerShell.Utility, Microsoft.PowerShell.Management
+. (Join-Path $PSScriptRoot 'powershell-oracle-helpers.ps1')
 $exe = (Resolve-Path -LiteralPath $ExecutablePath).Path
 $probeName = 'wworacleprobe'
-$lab = Join-Path ([System.IO.Path]::GetTempPath()) ('whichwhy-powershell-oracle-' + [guid]::NewGuid().ToString('N'))
+$lab = Join-Path ([IO.Path]::GetTempPath()) ('whichwhy-powershell-oracle-' + [guid]::NewGuid().ToString('N'))
 $oldPath = $env:PATH
+$oldModulePath = $env:PSModulePath
+$marker = Join-Path $lab 'body.marker'
+$moduleName = 'WhichWhyOracleFixture'
+$moduleDir = Join-Path $lab $moduleName
+$initMarker = Join-Path $moduleDir 'init.marker'
 
-function Convert-CommandTypeToKind([string]$commandType) {
-    if ($commandType -eq 'ExternalScript') {
-        return 'external-script'
+function Assert-WhichWhyMatchesPowerShell([string]$phase, [string]$name, [string[]]$kinds, [bool]$loaded = $false) {
+    $before = Get-OracleSessionSnapshot
+    $preference = $ExecutionContext.SessionState.PSVariable.Get('global:PSModuleAutoLoadingPreference')
+    $value = $null
+    if ($null -ne $preference) { $value = $preference.Value }
+    $texts = @()
+    foreach ($json in @($true, $false)) {
+        if ($json) { $text = @(whichwhy $name --json) } else { $text = @(whichwhy $name) }
+        $code = $LASTEXITCODE
+        if ($code -ne [int]($kinds.Count -eq 0)) { throw "[$phase] unexpected inspection exit $code" }
+        if ((Test-OraclePathExists $marker)) { throw "[$phase] inspection executed fixture" }
+        if ((Test-OraclePathExists $initMarker) -ne $loaded) { throw "[$phase] module initialization changed" }
+        Assert-OracleText (Get-OracleSessionSnapshot) $before "[$phase] session state"
+        $afterPreference = $ExecutionContext.SessionState.PSVariable.Get('global:PSModuleAutoLoadingPreference')
+        if (-not [object]::ReferenceEquals($preference, $afterPreference)) { throw 'Preference identity/absence changed' }
+        if ($null -ne $preference -and -not [object]::ReferenceEquals($value, $preference.Value)) { throw 'Preference value changed' }
+        $texts += ($text -join "`n")
     }
-    return $commandType.ToLowerInvariant()
-}
-
-function Assert-WhichWhyMatchesPowerShell([string]$phase) {
-    $oracle = @(Microsoft.PowerShell.Core\Get-Command -Name $probeName -All -ListImported -ErrorAction SilentlyContinue)
-    if ($oracle.Count -eq 0) {
-        throw "[$phase] PowerShell oracle returned no matches"
-    }
-
-    $jsonText = (whichwhy $probeName --json | Out-String)
-    if ($LASTEXITCODE -ne 0) {
-        throw "[$phase] WhichWhy exited with $LASTEXITCODE"
-    }
-    $doc = $jsonText | ConvertFrom-Json
-
-    if ($doc.schema_version -ne 2 -or $doc.resolution_scope -ne 'powershell-loaded-session' -or $doc.policy -ne 'powershell-loaded-session-order-v1' -or $doc.claim_strength -ne 'shell-observed') {
-        throw "[$phase] WhichWhy lost its shell-scoped claim"
-    }
-
-    if ($null -eq $doc.selected) {
-        throw "[$phase] WhichWhy returned no winner"
-    }
-    if ([int]$doc.candidates.Count -ne [int]$oracle.Count) {
-        throw "[$phase] candidate count mismatch: WhichWhy=$($doc.candidates.Count) PowerShell=$($oracle.Count)"
-    }
-
+    # No subject discovery before WhichWhy; guard even qualified unloaded names.
+    $oracle = @(Get-PassiveOracleMatches $name)
+    Assert-OracleText (Get-OracleSessionSnapshot) $before "[$phase] oracle session state"
+    if ((Test-OraclePathExists $marker) -or ((Test-OraclePathExists $initMarker) -ne $loaded)) { throw 'Oracle mutated fixture state' }
+    $doc = $texts[0] | ConvertFrom-Json
+    if ($doc.schema_version -ne 2 -or $doc.resolution_scope -ne 'powershell-loaded-session' -or $doc.policy -ne 'powershell-loaded-session-order-v1' -or $doc.claim_strength -ne 'shell-observed') { throw 'Shell claim changed' }
+    Assert-OracleText $doc.command $name 'Command identity'
+    Assert-OracleText $doc.shell.version ([string]$PSVersionTable.PSVersion) 'Version'
+    Assert-OracleText $doc.shell.edition ([string]$PSVersionTable.PSEdition) 'Edition'
+    if ($doc.candidates.Count -ne $oracle.Count -or $oracle.Count -ne $kinds.Count) { throw "[$phase] candidate/fixture count mismatch" }
     for ($i = 0; $i -lt $oracle.Count; $i++) {
-        $expected = $oracle[$i]
-        $actual = $doc.candidates[$i]
-        $expectedKind = Convert-CommandTypeToKind ([string]$expected.CommandType)
-
-        if ([string]$actual.kind -ne $expectedKind) {
-            throw "[$phase] candidate $i kind mismatch: WhichWhy=$($actual.kind) PowerShell=$expectedKind"
-        }
-        if ([string]$actual.name -ne [string]$expected.Name) {
-            throw "[$phase] candidate $i name mismatch: WhichWhy=$($actual.name) PowerShell=$($expected.Name)"
-        }
-
-        $expectedPath = ''
-        if ($null -ne $expected.PSObject.Properties['Path']) {
-            $expectedPath = [string]$expected.Path
-        }
-        if ($expectedPath -ne '' -and -not [string]::Equals([string]$actual.path, $expectedPath, [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw "[$phase] candidate $i path mismatch: WhichWhy=$($actual.path) PowerShell=$expectedPath"
-        }
-
-        if ($expectedKind -eq 'alias') {
-            if ([string]$actual.alias_target -ne [string]$expected.Definition) {
-                throw "[$phase] alias target mismatch: WhichWhy=$($actual.alias_target) PowerShell=$($expected.Definition)"
-            }
-        }
+        Assert-OracleText ([string]$oracle[$i].CommandType) $kinds[$i] "[$phase] fixture order $i"
+        Assert-OracleCandidate $doc.candidates[$i] $oracle[$i] "[$phase] candidate $i"
     }
-
-    $expectedWinnerKind = Convert-CommandTypeToKind ([string]$oracle[0].CommandType)
-    if ([string]$doc.selected.kind -ne $expectedWinnerKind) {
-        throw "[$phase] winner mismatch: WhichWhy=$($doc.selected.kind) PowerShell=$expectedWinnerKind"
-    }
-
-    Write-Host "PASS [$phase] winner=$expectedWinnerKind candidates=$($oracle.Count)"
+    if ($oracle.Count) { Assert-OracleCandidate $doc.selected $oracle[0] "[$phase] selected" }
+    elseif ($null -ne $doc.selected -or -not $doc.no_candidate_reason -or -not $texts[1].Contains($doc.no_candidate_reason)) { throw 'Missing result overclaims' }
+    if ($doc.limitations -notcontains 'Unloaded module auto-loading is not modeled yet.') { throw 'Missing autoload limitation' }
+    [Console]::WriteLine("PASS [$phase] candidates=$($oracle.Count); PowerShell $($PSVersionTable.PSVersion)")
 }
-
-New-Item -ItemType Directory -Path $lab -Force | Out-Null
-Set-Content -LiteralPath (Join-Path $lab ($probeName + '.cmd')) -Value '@echo off' -Encoding ASCII
 
 try {
-    $env:PATH = "$lab;$oldPath"
-
-    $initScript = (& $exe init powershell | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0) {
-        throw "whichwhy init powershell exited with $LASTEXITCODE"
+    [void][IO.Directory]::CreateDirectory($moduleDir)
+    $secondDir = Join-Path $lab 'second path'
+    [void][IO.Directory]::CreateDirectory($secondDir)
+    foreach ($dir in @($lab, $secondDir)) {
+        [IO.File]::WriteAllText((Join-Path $dir ($probeName + '.cmd')), "@echo off`r`necho executed>`"$marker`"`r`n")
     }
+    [IO.File]::WriteAllText((Join-Path $moduleDir ($moduleName + '.psd1')), "@{ RootModule = '$moduleName.psm1'; ModuleVersion = '1.0'; FunctionsToExport = @('Get-WhichWhyOracleFixture') }")
+    $moduleBody = "[IO.File]::AppendAllText((Join-Path `$PSScriptRoot 'init.marker'), 'init')`nfunction Get-WhichWhyOracleFixture { [IO.File]::WriteAllText((Join-Path (Split-Path `$PSScriptRoot) 'body.marker'), 'executed') }`nExport-ModuleMember -Function Get-WhichWhyOracleFixture"
+    [IO.File]::WriteAllText((Join-Path $moduleDir ($moduleName + '.psm1')), $moduleBody)
+    $env:PATH = "$lab;$secondDir"
+    $env:PSModulePath = "$lab;$oldModulePath"
+    $initScript = (& $exe init powershell) -join "`n"
+    if ($LASTEXITCODE -ne 0 -or -not $initScript) { throw 'Bridge generation failed' }
     Invoke-Expression $initScript
-
-    function global:wworacleprobe { 'function' }
-    Set-Alias -Name $probeName -Value Get-Date -Scope Global
-
-    Assert-WhichWhyMatchesPowerShell 'alias-function-application'
-
+    function global:wworacleprobe { [IO.File]::WriteAllText($marker, 'executed') }
+    function global:Write-WhichWhyOracleMarker { [IO.File]::WriteAllText($marker, 'executed') }
+    Set-Alias -Name $probeName -Value Write-WhichWhyOracleMarker -Scope Global
+    Assert-WhichWhyMatchesPowerShell 'alias-function-application' $probeName @('Alias', 'Function', 'Application', 'Application')
     Remove-Item -LiteralPath ("Alias:" + $probeName) -Force
-    Assert-WhichWhyMatchesPowerShell 'function-application'
-
+    Assert-WhichWhyMatchesPowerShell 'function-application' $probeName @('Function', 'Application', 'Application')
     Remove-Item -LiteralPath ("Function:" + $probeName) -Force
-    Assert-WhichWhyMatchesPowerShell 'application-only'
-}
-finally {
+    Assert-WhichWhyMatchesPowerShell 'application-only' $probeName @('Application', 'Application')
+    Assert-WhichWhyMatchesPowerShell 'missing' 'wworaclemissing' @()
+    Assert-WhichWhyMatchesPowerShell 'unloaded-module' 'Get-WhichWhyOracleFixture' @()
+    Assert-WhichWhyMatchesPowerShell 'unloaded-qualified' "$moduleName\Get-WhichWhyOracleFixture" @()
+    Microsoft.PowerShell.Core\Import-Module (Join-Path $moduleDir ($moduleName + '.psd1')) -Global
+    Assert-WhichWhyMatchesPowerShell 'loaded-module' 'Get-WhichWhyOracleFixture' @('Function') $true
+    if ([IO.File]::ReadAllText($initMarker) -cne 'init') { throw 'Module initialized more than once' }
+} finally {
     $env:PATH = $oldPath
-    Remove-Item -LiteralPath ("Alias:" + $probeName) -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath ("Function:" + $probeName) -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath 'Function:whichwhy' -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $lab -Recurse -Force -ErrorAction SilentlyContinue
+    $env:PSModulePath = $oldModulePath
+    Microsoft.PowerShell.Core\Remove-Module $moduleName -Force -ErrorAction SilentlyContinue
+    foreach ($path in @("Alias:$probeName", "Function:$probeName", 'Function:whichwhy', 'Function:Write-WhichWhyOracleMarker')) {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+    $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')
+    if ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($lab)) -ne $tempRoot) { throw 'Unsafe fixture cleanup path' }
+    if ([IO.Directory]::Exists($lab)) { [IO.Directory]::Delete($lab, $true) }
 }
 
-& (Join-Path $PSScriptRoot 'test-powershell-passive.ps1') -ExecutablePath $exe
-& (Join-Path $PSScriptRoot 'test-powershell-transport.ps1') -ExecutablePath $exe
+# Isolate suites from the parent harness; each native launch must succeed.
+$shellExe = [Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+foreach ($suite in @('passive', 'transport')) {
+    & $shellExe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "test-powershell-$suite.ps1") -ExecutablePath $exe
+    if ($LASTEXITCODE -ne 0) { throw "$suite suite failed" }
+}
