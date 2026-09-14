@@ -151,6 +151,15 @@ invocation. Unloaded-module auto-loading remains unmodeled; even a discovered
 alias does not prove its target can execute. The F1 collector guard is unchanged.
 No discovery probe executes the inspected command.
 
+Before scratch assignments, the bridge checks every scratch binding for inherited
+`AllScope` state. PowerShell shares these variable objects across child scopes;
+local assignment or replacement cannot safely isolate them. A collision refuses
+the call with a PowerShell error and `LASTEXITCODE=2`, before discovery or native
+execution. Caller variable identity, value and options remain unchanged. Ordinary
+non-AllScope caller variables are shadowed normally. Regenerate the bridge after
+upgrading. The fresh-session isolation suite checks every emitted scratch write,
+including loop variables and `-ErrorVariable`, on 5.1 and 7.
+
 ### Explicit PowerShell inspection
 
 The explicit collector runs entirely inside the existing F1 global autoload guard.

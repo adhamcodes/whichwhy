@@ -10,6 +10,22 @@ import (
 // PowerShell 5.1 as well as modern PowerShell.
 func InitScript(executable string) string {
 	escapedExecutable := strings.ReplaceAll(executable, "'", "''")
+	// AllScope variables are shared objects even in a child scope. Neither local:
+	// assignments nor removing/replacing the local binding safely shadows them on
+	// 5.1/7. Refuse collisions before ANY scratch assignment, including loop and
+	// ErrorVariable writes. Generate the checks without a PowerShell loop variable
+	// (which would itself need isolation). The native isolation suite derives all
+	// writes from the emitted AST so new scratch names cannot bypass this guard.
+	var isolation strings.Builder
+	for _, name := range []string{
+		"whichWhyExecutable", "command", "literal", "jsonOutput", "inspectionArgumentCountOK",
+		"wildcardName", "externalTypes", "broadTypes", "broadCommands", "matches", "item",
+		"discoveryErrors", "externalCommands", "failure", "whichWhyAutoLoadingVariable",
+		"whichWhyAutoLoadingValue", "whichWhyAutoLoadingChanged", "whichWhyAutoLoadingGuardValue",
+		"records", "path", "aliasTarget", "fields", "record", "entryPoint", "encodedCommand",
+	} {
+		fmt.Fprintf(&isolation, `if ($null -ne $ExecutionContext.SessionState.PSVariable.Get('local:%[1]s') -and ($ExecutionContext.SessionState.PSVariable.Get('local:%[1]s').Options -band [System.Management.Automation.ScopedItemOptions]::AllScope)) { $global:LASTEXITCODE = 2; throw 'whichwhy: cannot isolate PowerShell scratch variable %[1]s from inherited AllScope state' }; `, name)
+	}
 	routing := strings.Join([]string{
 		`if ($args.Count -eq 0) { & $whichWhyExecutable; return };`,
 		`$command = [string]$args[0]; $literal = $command -ceq 'inspect'; $jsonOutput = $false;`,
@@ -76,5 +92,5 @@ func InitScript(executable string) string {
 		`};`,
 	}, " ")
 
-	return fmt.Sprintf(`function global:whichwhy { $whichWhyExecutable = '%s'; %s %s $records = @(); foreach ($item in $matches) { $path = ''; if ($null -ne $item.PSObject.Properties['Path']) { $path = [string]$item.Path }; $aliasTarget = ''; if ([string]$item.CommandType -eq 'Alias') { $aliasTarget = [string]$item.Definition }; $fields = @([string]$item.CommandType, [string]$item.Name, [string]$item.Source, $path, $aliasTarget); $record = $fields -join [char]31; $records += [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($record)) }; $entryPoint = '__powershell'; if ($jsonOutput) { $entryPoint = '__powershell-json' }; $encodedCommand = [Convert]::ToBase64String([Text.UTF8Encoding]::new($false, $true).GetBytes($command)); & $whichWhyExecutable $entryPoint $encodedCommand ([string]$PSVersionTable.PSVersion) ([string]$PSVersionTable.PSEdition) @records }`, escapedExecutable, routing, passiveDiscovery)
+	return fmt.Sprintf(`function global:whichwhy { %s $whichWhyExecutable = '%s'; %s %s $records = @(); foreach ($item in $matches) { $path = ''; if ($null -ne $item.PSObject.Properties['Path']) { $path = [string]$item.Path }; $aliasTarget = ''; if ([string]$item.CommandType -eq 'Alias') { $aliasTarget = [string]$item.Definition }; $fields = @([string]$item.CommandType, [string]$item.Name, [string]$item.Source, $path, $aliasTarget); $record = $fields -join [char]31; $records += [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($record)) }; $entryPoint = '__powershell'; if ($jsonOutput) { $entryPoint = '__powershell-json' }; $encodedCommand = [Convert]::ToBase64String([Text.UTF8Encoding]::new($false, $true).GetBytes($command)); & $whichWhyExecutable $entryPoint $encodedCommand ([string]$PSVersionTable.PSVersion) ([string]$PSVersionTable.PSEdition) @records }`, isolation.String(), escapedExecutable, routing, passiveDiscovery)
 }
