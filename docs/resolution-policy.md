@@ -246,8 +246,16 @@ name that detects double decoding. Backslash and mixed quote/backslash cases use
 missing qualified names: PowerShell interprets backslashes as path/module
 qualification, so those cases do not claim exact-name alias discovery. Markers
 must remain absent. Malformed native requests and unpaired UTF-16 are also tested.
-The test harness temporarily selects UTF-8 stdout decoding and restores it;
-terminal code-page configuration is separate from the request protocol.
+The request-transport harness temporarily selects UTF-8 stdout decoding and
+restores it. Separate response regressions start with the untouched caller
+encoding and also exercise CP437, CP1252 and UTF-8. The bridge explicitly reads
+the known CLI's stdout and stderr as strict UTF-8 via redirected process streams;
+it never assigns console input/output encoding or PowerShell `OutputEncoding`.
+Both pipes drain asynchronously, then stdout lines enter the success stream and
+stderr lines enter the error stream. Native exit status is retained before error
+delivery, including when the caller treats an error as terminating. Only the
+existing quoting-safe private request tokens use this adapter; public forwarding,
+strict command encoding and candidate ordering remain unchanged.
 
 Against pre-F6 commit `be55f0eb5970cf589cf9bd3544de60dfbce1d18e`, Windows
 PowerShell 5.1.26100.9444 changed `name"with"quote` to `namewithquote` and disrupted
