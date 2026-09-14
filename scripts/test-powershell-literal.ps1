@@ -33,6 +33,7 @@ function Assert-LiteralReport([string]$name, [object[]]$expected) {
         $texts += ($text -join "`n")
     }
     $doc = $texts[0] | ConvertFrom-Json
+    Assert-OracleJSONContract $doc
     Assert-OracleText $doc.command $name 'Literal command identity'
     Assert-OracleText ($texts[1].Split([char]10)[0]) ('WhichWhy ' + [char]0x2014 + ' ' + $name) 'Literal human heading'
     if ($doc.resolution_scope -ne 'powershell-loaded-session' -or $doc.policy -ne 'powershell-loaded-session-order-v1' -or $doc.claim_strength -ne 'shell-observed') { throw 'Literal shell claim changed' }

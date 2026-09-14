@@ -37,7 +37,10 @@ func TestObservationPresentationsAndDoctor(t *testing.T) {
 			assertReportPresentations(t, r)
 			var machine, stderr bytes.Buffer
 			printCommandJSON(&machine, &stderr, r)
-			var doc jsonDocument
+			var doc struct {
+				Inspection      *resolution.ProcessInspection `json:"inspection"`
+				SelectionStatus string                        `json:"selection_status"`
+			}
 			if err := json.Unmarshal(machine.Bytes(), &doc); err != nil {
 				t.Fatal(err)
 			}
@@ -51,7 +54,14 @@ func TestObservationPresentationsAndDoctor(t *testing.T) {
 			var human bytes.Buffer
 			printDoctorResult(&human, d)
 			j := doctorJSONDocument(d)
-			if !reflect.DeepEqual(j.CommandDiscovery.Inspection, r.Inspection) || j.CommandDiscovery.SelectionStatus != r.SelectionStatus || !strings.Contains(human.String(), "controlled denial") {
+			encoded, err := json.Marshal(j.CommandDiscovery)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(encoded, &doc); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(doc.Inspection, r.Inspection) || doc.SelectionStatus != r.SelectionStatus || !strings.Contains(human.String(), "controlled denial") {
 				t.Fatalf("doctor presentation lost evidence: %#v %s", j, &human)
 			}
 			if tc.discovery == doctorDiscoveryUncertain && strings.Contains(human.String(), "OK       The process policy selects") {

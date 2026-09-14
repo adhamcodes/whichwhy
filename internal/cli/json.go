@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,8 +12,45 @@ import (
 	"github.com/adhamcodes/whichwhy/internal/resolution"
 )
 
-const jsonSchemaVersion = 1
-const resolutionJSONSchemaVersion = 2
+// Versions belong to document families, not the shared evidence model.
+// See docs/json-contract.md before changing any public shape.
+const (
+	commandJSONSchemaVersion = 2
+	pathJSONSchemaVersion    = 1
+	doctorJSONSchemaVersion  = 2
+)
+
+// Presentation-owned evidence types keep internal model changes out of the API.
+type jsonProcessPath struct {
+	Raw     string                 `json:"raw_value"`
+	Entries []jsonProcessPathEntry `json:"entries"`
+}
+
+type jsonProcessPathEntry struct {
+	Index int    `json:"index"`
+	Raw   string `json:"raw"`
+	Value string `json:"value"`
+}
+
+type jsonInspection struct {
+	Completeness string            `json:"completeness"`
+	Observations []jsonObservation `json:"observations"`
+}
+
+type jsonObservation struct {
+	Attempt   int                   `json:"attempt"`
+	PathIndex int                   `json:"path_index"`
+	Name      string                `json:"name"`
+	Path      string                `json:"path"`
+	Status    string                `json:"status"`
+	Error     *jsonObservationError `json:"error,omitempty"`
+}
+
+type jsonObservationError struct {
+	Operation string `json:"operation"`
+	Category  string `json:"category"`
+	Message   string `json:"message"`
+}
 
 type jsonShell struct {
 	Name    string `json:"name"`
@@ -30,20 +68,20 @@ type jsonCandidate struct {
 }
 
 type jsonDocument struct {
-	SchemaVersion     int                           `json:"schema_version"`
-	Command           string                        `json:"command"`
-	ResolutionScope   string                        `json:"resolution_scope"`
-	Policy            string                        `json:"policy"`
-	ClaimStrength     string                        `json:"claim_strength"`
-	Shell             *jsonShell                    `json:"shell,omitempty"`
-	Selected          *jsonCandidate                `json:"selected"`
-	Candidates        []jsonCandidate               `json:"candidates"`
-	SelectionReason   string                        `json:"selection_reason,omitempty"`
-	NoCandidateReason string                        `json:"no_candidate_reason,omitempty"`
-	Limitations       []string                      `json:"limitations"`
-	ProcessPath       *processpath.Path             `json:"process_path,omitempty"`
-	Inspection        *resolution.ProcessInspection `json:"inspection,omitempty"`
-	SelectionStatus   string                        `json:"selection_status,omitempty"`
+	SchemaVersion     int              `json:"schema_version"`
+	Command           string           `json:"command"`
+	ResolutionScope   string           `json:"resolution_scope"`
+	Policy            string           `json:"policy"`
+	ClaimStrength     string           `json:"claim_strength"`
+	Shell             *jsonShell       `json:"shell,omitempty"`
+	Selected          *jsonCandidate   `json:"selected"`
+	Candidates        []jsonCandidate  `json:"candidates"`
+	SelectionReason   string           `json:"selection_reason,omitempty"`
+	NoCandidateReason string           `json:"no_candidate_reason,omitempty"`
+	Limitations       []string         `json:"limitations"`
+	ProcessPath       *jsonProcessPath `json:"process_path,omitempty"`
+	Inspection        *jsonInspection  `json:"inspection,omitempty"`
+	SelectionStatus   string           `json:"selection_status,omitempty"`
 }
 
 type jsonPathEntry struct {
@@ -83,17 +121,17 @@ type jsonPlatform struct {
 }
 
 type jsonDoctorDiscovery struct {
-	State             string                        `json:"state"`
-	PathSelected      string                        `json:"path_selected,omitempty"`
-	ResolutionScope   string                        `json:"resolution_scope"`
-	Policy            string                        `json:"policy"`
-	ClaimStrength     string                        `json:"claim_strength"`
-	OtherCandidates   []string                      `json:"other_candidates"`
-	ProcessPath       *processpath.Path             `json:"process_path,omitempty"`
-	Inspection        *resolution.ProcessInspection `json:"inspection,omitempty"`
-	SelectionStatus   string                        `json:"selection_status,omitempty"`
-	SelectionReason   string                        `json:"selection_reason,omitempty"`
-	NoCandidateReason string                        `json:"no_candidate_reason,omitempty"`
+	State             string           `json:"state"`
+	PathSelected      string           `json:"path_selected,omitempty"`
+	ResolutionScope   string           `json:"resolution_scope"`
+	Policy            string           `json:"policy"`
+	ClaimStrength     string           `json:"claim_strength"`
+	OtherCandidates   []string         `json:"other_candidates"`
+	ProcessPath       *jsonProcessPath `json:"process_path,omitempty"`
+	Inspection        *jsonInspection  `json:"inspection,omitempty"`
+	SelectionStatus   string           `json:"selection_status,omitempty"`
+	SelectionReason   string           `json:"selection_reason,omitempty"`
+	NoCandidateReason string           `json:"no_candidate_reason,omitempty"`
 }
 
 type jsonDoctorDocument struct {
@@ -120,7 +158,7 @@ func runPathJSON(stdout, stderr io.Writer, lookup envLookup, inspect pathInspect
 	value, ok := lookup("PATH")
 	if !ok {
 		doc := jsonPathDocument{
-			SchemaVersion: jsonSchemaVersion,
+			SchemaVersion: pathJSONSchemaVersion,
 			Kind:          "path",
 			Scope:         "process-path",
 			Policy:        resolution.ProcessPolicy,
@@ -163,7 +201,7 @@ func commandJSONDocument(report resolution.Report) jsonDocument {
 		candidates = append(candidates, candidateJSON(candidate))
 	}
 	doc := jsonDocument{
-		SchemaVersion:     resolutionJSONSchemaVersion,
+		SchemaVersion:     commandJSONSchemaVersion,
 		Command:           report.Command,
 		ResolutionScope:   report.Scope,
 		Policy:            report.Policy,
@@ -171,9 +209,9 @@ func commandJSONDocument(report resolution.Report) jsonDocument {
 		Candidates:        candidates,
 		SelectionReason:   report.SelectionReason,
 		NoCandidateReason: report.NoCandidateReason,
-		Limitations:       report.Limitations,
-		ProcessPath:       report.ProcessPath,
-		Inspection:        report.Inspection,
+		Limitations:       append([]string{}, report.Limitations...),
+		ProcessPath:       processPathJSON(report.ProcessPath),
+		Inspection:        inspectionJSON(report.Inspection),
 		SelectionStatus:   report.SelectionStatus,
 	}
 	if report.Shell != nil {
@@ -206,7 +244,7 @@ func pathJSONDocument(report pathdiag.Report) jsonPathDocument {
 	}
 
 	return jsonPathDocument{
-		SchemaVersion: jsonSchemaVersion,
+		SchemaVersion: pathJSONSchemaVersion,
 		Kind:          "path",
 		Scope:         "process-path",
 		Policy:        resolution.ProcessPolicy,
@@ -239,7 +277,7 @@ func doctorJSONDocument(report doctorReport) jsonDoctorDocument {
 	}
 
 	return jsonDoctorDocument{
-		SchemaVersion: resolutionJSONSchemaVersion,
+		SchemaVersion: doctorJSONSchemaVersion,
 		Kind:          "doctor",
 		Status:        status,
 		Version:       report.Version,
@@ -255,13 +293,13 @@ func doctorJSONDocument(report doctorReport) jsonDoctorDocument {
 			Policy:            report.Resolution.Policy,
 			ClaimStrength:     report.Resolution.ClaimStrength,
 			OtherCandidates:   otherCandidates,
-			ProcessPath:       report.Resolution.ProcessPath,
-			Inspection:        report.Resolution.Inspection,
+			ProcessPath:       processPathJSON(report.Resolution.ProcessPath),
+			Inspection:        inspectionJSON(report.Resolution.Inspection),
 			SelectionStatus:   report.Resolution.SelectionStatus,
 			SelectionReason:   report.Resolution.SelectionReason,
 			NoCandidateReason: report.Resolution.NoCandidateReason,
 		},
-		Limitations: report.Resolution.Limitations,
+		Limitations: append([]string{}, report.Resolution.Limitations...),
 	}
 }
 
@@ -275,7 +313,43 @@ func normalizePowerShellKind(commandType string) string {
 }
 
 func writeJSON(stdout io.Writer, value any) error {
-	encoder := json.NewEncoder(stdout)
+	// Finish serialization before exposing bytes. A transport failure may still
+	// accept a prefix; no writer API can retract bytes from a pipe or terminal.
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
 	encoder.SetEscapeHTML(false)
-	return encoder.Encode(value)
+	if err := encoder.Encode(value); err != nil {
+		return err
+	}
+	n, err := stdout.Write(buffer.Bytes())
+	if err == nil && n != buffer.Len() {
+		return io.ErrShortWrite
+	}
+	return err
+}
+
+func processPathJSON(path *processpath.Path) *jsonProcessPath {
+	if path == nil {
+		return nil
+	}
+	doc := &jsonProcessPath{Raw: path.Raw, Entries: make([]jsonProcessPathEntry, 0, len(path.Entries))}
+	for _, entry := range path.Entries {
+		doc.Entries = append(doc.Entries, jsonProcessPathEntry{Index: entry.Index, Raw: entry.Raw, Value: entry.Value})
+	}
+	return doc
+}
+
+func inspectionJSON(inspection *resolution.ProcessInspection) *jsonInspection {
+	if inspection == nil {
+		return nil
+	}
+	doc := &jsonInspection{Completeness: inspection.Completeness, Observations: make([]jsonObservation, 0, len(inspection.Observations))}
+	for _, observation := range inspection.Observations {
+		o := jsonObservation{Attempt: observation.Attempt, PathIndex: observation.PathIndex, Name: observation.Name, Path: observation.Path, Status: string(observation.Status)}
+		if observation.Error != nil {
+			o.Error = &jsonObservationError{Operation: observation.Error.Operation, Category: observation.Error.Category, Message: observation.Error.Message}
+		}
+		doc.Observations = append(doc.Observations, o)
+	}
+	return doc
 }

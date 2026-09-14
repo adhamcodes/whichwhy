@@ -82,3 +82,35 @@ function Assert-OracleCandidate($actual, $expected, [string]$context) {
         Assert-OracleText $value $pair[1] "$context $($pair[0])"
     }
 }
+
+# Independent public wire-shape assertions on real bridge reports. Metadata and
+# semantic candidate order are checked separately against the shell oracle.
+function Assert-OracleJSONContract($doc) {
+    $keys = @('schema_version', 'command', 'resolution_scope', 'policy', 'claim_strength', 'shell', 'selected', 'candidates', 'limitations')
+    if ($null -eq $doc.selected) { $keys += 'no_candidate_reason' } else { $keys += 'selection_reason' }
+    $actualKeys = @($doc.PSObject.Properties.Name)
+    if ($actualKeys.Count -ne $keys.Count) { throw 'Command JSON key count changed' }
+    foreach ($key in $keys) {
+        if ($actualKeys -cnotcontains $key) { throw "Command JSON missing key: $key" }
+    }
+    if ($doc.schema_version -ne 2 -or $doc.resolution_scope -cne 'powershell-loaded-session' -or $doc.policy -cne 'powershell-loaded-session-order-v1' -or $doc.claim_strength -cne 'shell-observed') { throw 'Command JSON identifiers changed' }
+    if ($doc.command -isnot [string] -or $doc.candidates -isnot [array] -or $doc.limitations -isnot [array]) { throw 'Command JSON string/array shape changed' }
+    foreach ($limit in $doc.limitations) { if ($limit -isnot [string] -or -not $limit) { throw 'Invalid JSON limitation' } }
+    $reason = if ($null -eq $doc.selected) { $doc.no_candidate_reason } else { $doc.selection_reason }
+    if ($reason -isnot [string] -or -not $reason) { throw 'Invalid JSON selection reason' }
+    $shellKeys = @($doc.shell.PSObject.Properties.Name)
+    if ($shellKeys.Count -ne 3 -or $shellKeys -cnotcontains 'name' -or $shellKeys -cnotcontains 'version' -or $shellKeys -cnotcontains 'edition') { throw 'Shell JSON shape changed' }
+    Assert-OracleText $doc.shell.name 'PowerShell' 'Shell name'
+    Assert-OracleText $doc.shell.version ([string]$PSVersionTable.PSVersion) 'Shell version'
+    Assert-OracleText $doc.shell.edition ([string]$PSVersionTable.PSEdition) 'Shell edition'
+    $allCandidates = @($doc.candidates)
+    if ($null -ne $doc.selected) { $allCandidates += $doc.selected }
+    foreach ($candidate in $allCandidates) {
+        if ($null -eq $candidate -or $null -eq $candidate.PSObject.Properties['kind']) { throw 'Missing JSON candidate kind' }
+        foreach ($property in $candidate.PSObject.Properties) {
+            if (@('kind', 'name', 'path', 'source', 'alias_target') -cnotcontains $property.Name) { throw "Unexpected shell candidate key: $($property.Name)" }
+            if ($property.Value -isnot [string] -or -not $property.Value) { throw "Optional JSON candidate field must be omitted when empty: $($property.Name)" }
+        }
+    }
+    if (($null -eq $doc.selected) -ne ($doc.candidates.Count -eq 0)) { throw 'JSON selection/miss shape changed' }
+}
