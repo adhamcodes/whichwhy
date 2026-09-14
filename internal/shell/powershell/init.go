@@ -23,6 +23,7 @@ func InitScript(executable string) string {
 		"discoveryErrors", "externalCommands", "failure", "whichWhyAutoLoadingVariable",
 		"whichWhyAutoLoadingValue", "whichWhyAutoLoadingChanged", "whichWhyAutoLoadingGuardValue",
 		"records", "path", "aliasTarget", "fields", "record", "entryPoint", "encodedCommand",
+		"whichWhyProcess", "whichWhyStdout", "whichWhyStderr", "whichWhyReader", "whichWhyLine",
 	} {
 		fmt.Fprintf(&isolation, `if ($null -ne $ExecutionContext.SessionState.PSVariable.Get('local:%[1]s') -and ($ExecutionContext.SessionState.PSVariable.Get('local:%[1]s').Options -band [System.Management.Automation.ScopedItemOptions]::AllScope)) { $global:LASTEXITCODE = 2; throw 'whichwhy: cannot isolate PowerShell scratch variable %[1]s from inherited AllScope state' }; `, name)
 	}
@@ -92,5 +93,36 @@ func InitScript(executable string) string {
 		`};`,
 	}, " ")
 
-	return fmt.Sprintf(`function global:whichwhy { %s $whichWhyExecutable = '%s'; %s %s $records = @(); foreach ($item in $matches) { $path = ''; if ($null -ne $item.PSObject.Properties['Path']) { $path = [string]$item.Path }; $aliasTarget = ''; if ([string]$item.CommandType -eq 'Alias') { $aliasTarget = [string]$item.Definition }; $fields = @([string]$item.CommandType, [string]$item.Name, [string]$item.Source, $path, $aliasTarget); $record = $fields -join [char]31; $records += [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($record)) }; $entryPoint = '__powershell'; if ($jsonOutput) { $entryPoint = '__powershell-json' }; $encodedCommand = [Convert]::ToBase64String([Text.UTF8Encoding]::new($false, $true).GetBytes($command)); & $whichWhyExecutable $entryPoint $encodedCommand ([string]$PSVersionTable.PSVersion) ([string]$PSVersionTable.PSEdition) @records }`, isolation.String(), escapedExecutable, routing, passiveDiscovery)
+	// Native PowerShell invocation decodes stdout using Console.OutputEncoding.
+	// Read this fixed, known CLI's response with explicit UTF-8 instead, without
+	// ever setting caller encoding objects. Only the private wire request enters
+	// this adapter: Base64, version and edition are already quoting-safe tokens.
+	// Drain both pipes asynchronously before forwarding lines to the PowerShell
+	// success/error streams; large reports/diagnostics cannot deadlock each other.
+	// The advanced child block supplies WriteError without importing Utility or
+	// changing the public function's argument binding. Set the native exit code
+	// before forwarding errors (which may terminate under ErrorAction Stop).
+	response := strings.Join([]string{
+		`& { [CmdletBinding()] param();`,
+		`$global:LASTEXITCODE = 2; $whichWhyProcess = [Diagnostics.Process]::new();`,
+		`try {`,
+		`$whichWhyProcess.StartInfo.FileName = $whichWhyExecutable;`,
+		`$whichWhyProcess.StartInfo.Arguments = (@($entryPoint, $encodedCommand, [string]$PSVersionTable.PSVersion, [string]$PSVersionTable.PSEdition) + $records) -join ' ';`,
+		`$whichWhyProcess.StartInfo.WorkingDirectory = $ExecutionContext.SessionState.Path.CurrentFileSystemLocation.ProviderPath;`,
+		`$whichWhyProcess.StartInfo.UseShellExecute = $false; $whichWhyProcess.StartInfo.CreateNoWindow = $true;`,
+		`$whichWhyProcess.StartInfo.RedirectStandardOutput = $true; $whichWhyProcess.StartInfo.RedirectStandardError = $true;`,
+		`$whichWhyProcess.StartInfo.StandardOutputEncoding = [Text.UTF8Encoding]::new($false, $true);`,
+		`$whichWhyProcess.StartInfo.StandardErrorEncoding = [Text.UTF8Encoding]::new($false, $true);`,
+		`if (-not $whichWhyProcess.Start()) { throw 'whichwhy: native response process did not start' };`,
+		`$whichWhyStdout = $whichWhyProcess.StandardOutput.ReadToEndAsync(); $whichWhyStderr = $whichWhyProcess.StandardError.ReadToEndAsync();`,
+		`$whichWhyProcess.WaitForExit(); $global:LASTEXITCODE = $whichWhyProcess.ExitCode;`,
+		`$whichWhyReader = [IO.StringReader]::new($whichWhyStdout.GetAwaiter().GetResult());`,
+		`try { while ($null -ne ($whichWhyLine = $whichWhyReader.ReadLine())) { $PSCmdlet.WriteObject($whichWhyLine) } } finally { $whichWhyReader.Dispose() };`,
+		`$whichWhyReader = [IO.StringReader]::new($whichWhyStderr.GetAwaiter().GetResult());`,
+		`try { while ($null -ne ($whichWhyLine = $whichWhyReader.ReadLine())) { $PSCmdlet.WriteError([System.Management.Automation.ErrorRecord]::new([Exception]::new($whichWhyLine), 'NativeCommandError', [System.Management.Automation.ErrorCategory]::NotSpecified, $whichWhyExecutable)) } } finally { $whichWhyReader.Dispose() }`,
+		`} finally { $whichWhyProcess.Dispose() }`,
+		`}`,
+	}, " ")
+
+	return fmt.Sprintf(`function global:whichwhy { %s $whichWhyExecutable = '%s'; %s %s $records = @(); foreach ($item in $matches) { $path = ''; if ($null -ne $item.PSObject.Properties['Path']) { $path = [string]$item.Path }; $aliasTarget = ''; if ([string]$item.CommandType -eq 'Alias') { $aliasTarget = [string]$item.Definition }; $fields = @([string]$item.CommandType, [string]$item.Name, [string]$item.Source, $path, $aliasTarget); $record = $fields -join [char]31; $records += [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($record)) }; $entryPoint = '__powershell'; if ($jsonOutput) { $entryPoint = '__powershell-json' }; $encodedCommand = [Convert]::ToBase64String([Text.UTF8Encoding]::new($false, $true).GetBytes($command)); %s }`, isolation.String(), escapedExecutable, routing, passiveDiscovery, response)
 }

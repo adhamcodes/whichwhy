@@ -112,7 +112,7 @@ try {
 
 # Isolate suites from the parent harness; each native launch must succeed.
 $shellExe = [Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
-foreach ($suite in @('passive', 'transport', 'literal', 'isolation')) {
+foreach ($suite in @('passive', 'transport', 'literal', 'isolation', 'response')) {
     & $shellExe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "test-powershell-$suite.ps1") -ExecutablePath $exe
     if ($LASTEXITCODE -ne 0) { throw "$suite suite failed" }
 }
