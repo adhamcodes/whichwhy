@@ -83,6 +83,7 @@ try { & {
                 } elseif ($oracle.Count -ne 0) { throw 'Expected a controlled missing qualified name' }
 
                 $doc = ($json -join "`n") | ConvertFrom-Json
+                Assert-OracleJSONContract $doc
                 Assert-Ordinal ([string]$doc.command) $name 'JSON command'
                 Assert-Ordinal ([string]$human[0]) ('WhichWhy ' + [char]0x2014 + ' ' + $name) 'Human heading'
                 if ($jsonCode -ne $humanCode -or $jsonCode -ne [int](-not $aliasFixture)) { throw 'Unexpected human/JSON exit code' }

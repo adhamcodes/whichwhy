@@ -49,6 +49,7 @@ function Assert-WhichWhyMatchesPowerShell([string]$phase, [string]$name, [string
         Assert-OracleText (Get-OracleSessionSnapshot) $before "[$phase] oracle session state"
         if ((Test-OraclePathExists $marker) -or ((Test-OraclePathExists $initMarker) -ne $loaded)) { throw 'Oracle mutated fixture state' }
         $doc = $texts[0] | ConvertFrom-Json
+        Assert-OracleJSONContract $doc
         if ($doc.schema_version -ne 2 -or $doc.resolution_scope -ne 'powershell-loaded-session' -or $doc.policy -ne 'powershell-loaded-session-order-v1' -or $doc.claim_strength -ne 'shell-observed') { throw 'Shell claim changed' }
         Assert-OracleText $doc.command $name 'Command identity'
         Assert-OracleText $doc.shell.version ([string]$PSVersionTable.PSVersion) 'Version'

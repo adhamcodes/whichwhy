@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/adhamcodes/whichwhy/internal/processpath"
 	"github.com/adhamcodes/whichwhy/internal/resolution"
 	"github.com/adhamcodes/whichwhy/internal/resolver"
 	ps "github.com/adhamcodes/whichwhy/internal/shell/powershell"
@@ -60,7 +61,18 @@ func assertReportPresentations(t *testing.T, r resolution.Report) {
 	if doc.Policy != r.Policy || doc.ResolutionScope != r.Scope || doc.ClaimStrength != r.ClaimStrength || !reflect.DeepEqual(doc.Limitations, r.Limitations) || doc.SelectionReason != r.SelectionReason {
 		t.Fatalf("JSON changed report claim: %#v", doc)
 	}
-	if !reflect.DeepEqual(doc.Inspection, r.Inspection) || !reflect.DeepEqual(doc.ProcessPath, r.ProcessPath) || doc.SelectionStatus != r.SelectionStatus {
+	var evidence struct {
+		Inspection  *resolution.ProcessInspection `json:"inspection"`
+		ProcessPath *processpath.Path             `json:"process_path"`
+	}
+	if err := json.Unmarshal(machine.Bytes(), &evidence); err != nil {
+		t.Fatal(err)
+	}
+	var expectedPath *processpath.Path
+	if r.ProcessPath != nil {
+		expectedPath = &processpath.Path{Raw: r.ProcessPath.Raw, Entries: append([]processpath.Entry{}, r.ProcessPath.Entries...)}
+	}
+	if !reflect.DeepEqual(evidence.Inspection, r.Inspection) || !reflect.DeepEqual(evidence.ProcessPath, expectedPath) || doc.SelectionStatus != r.SelectionStatus {
 		t.Fatalf("JSON changed completed observation evidence: %#v", doc)
 	}
 	if r.Inspection != nil {

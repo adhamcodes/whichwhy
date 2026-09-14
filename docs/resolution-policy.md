@@ -265,6 +265,7 @@ for eligibility evaluation). Doctor retains its warning/status convention and
 executable-identity deduplication, extending warnings to incomplete inspection.
 It consumes a process report for selection, claim and limitations.
 
+The public compatibility rules are frozen in [json-contract.md](json-contract.md).
 Command inspection JSON uses schema version 2:
 
 - `resolution_scope`, `policy`, and `claim_strength` identify the claim;
@@ -656,7 +657,7 @@ buildability, never native Unix runtime success.
 ## Deferred work
 
 F8 verification is specified in the [oracle contract](oracle-contract.md).
-F10 final JSON compatibility remains a separate mission.
+F10 final JSON compatibility is specified in [json-contract.md](json-contract.md).
 Naming, other shells, and package/version-manager intelligence
 are outside this change. Exact shell parity for recognized-suffix fallback,
 literal extensionless discovery, and unusual PATHEXT parsing is also outside F4;
