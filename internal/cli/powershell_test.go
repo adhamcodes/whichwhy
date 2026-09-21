@@ -25,7 +25,7 @@ func TestRunPowerShellEvidenceShowsAliasWinner(t *testing.T) {
 	}
 	output := stdout.String()
 	for _, want := range []string{
-		"POWERSHELL WINNER",
+		"SELECTED",
 		"Alias wwprobe -> Get-Date",
 		"PowerShell 5.1.26100.9444 (Desktop)",
 		"Unloaded module auto-loading is not modeled yet",
@@ -102,7 +102,7 @@ func TestPowerShellTransportHumanJSONIdentity(t *testing.T) {
 					if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil || doc.Command != command {
 						t.Fatalf("JSON command = %q, error = %v; want %q", doc.Command, err, command)
 					}
-				} else if !strings.HasPrefix(stdout.String(), "WhichWhy — "+command+"\n\n") {
+				} else if !strings.HasPrefix(stdout.String(), "WhichWhy - "+safeText(command)+"\n") {
 					t.Fatalf("human heading did not retain exact command: %q", stdout.String())
 				}
 			}

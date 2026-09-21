@@ -32,7 +32,7 @@ func TestRunDoctorReportsConsistentCommandDiscovery(t *testing.T) {
 		t.Fatalf("runDoctor() exit code = %d, want 0", code)
 	}
 	output := stdout.String()
-	for _, want := range []string{"WhichWhy — doctor", "1.2.3", "The process policy selects this running executable for 'whichwhy'", "OK — command discovery is consistent", "changed nothing"} {
+	for _, want := range []string{"WhichWhy - doctor", "1.2.3", "The process policy selects this running executable for 'whichwhy'", "healthy", "changed nothing"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("stdout = %q, want %q", output, want)
 		}
@@ -62,7 +62,7 @@ func TestRunDoctorIgnoresRepeatedDiscoveryOfSameExecutable(t *testing.T) {
 		t.Fatalf("runDoctor() exit code = %d, want 0", code)
 	}
 	output := stdout.String()
-	if strings.Contains(output, "OTHER WHICHWHY CANDIDATES") || !strings.Contains(output, "OK — command discovery is consistent") {
+	if strings.Contains(output, "Other WhichWhy candidates") || !strings.Contains(output, "healthy") {
 		t.Fatalf("stdout = %q, want repeated references to same executable treated as one candidate", output)
 	}
 	if stderr.Len() != 0 {
@@ -142,7 +142,7 @@ func TestRunDoctorWarnsAboutAdditionalCandidates(t *testing.T) {
 		t.Fatalf("runDoctor() exit code = %d, want 1", code)
 	}
 	output := stdout.String()
-	if !strings.Contains(output, "OTHER WHICHWHY CANDIDATES") || !strings.Contains(output, other) {
+	if !strings.Contains(output, "Other WhichWhy candidates") || !strings.Contains(output, other) {
 		t.Fatalf("stdout = %q, want additional candidate", output)
 	}
 }

@@ -102,7 +102,7 @@ function Assert-Inspection([string]$name, [bool]$loaded, [string]$kind = '', [bo
             throw "Unloaded command fabricated a winner for $name"
         }
         if ($kind) {
-            if ($human -notmatch 'POWERSHELL WINNER') { throw 'Human output lost winner' }
+            if ($human -notmatch 'SELECTED') { throw 'Human output lost winner' }
         } elseif ($human -notmatch 'No command match was found in the current loaded PowerShell session') {
             throw 'Human output lost loaded-session limitation'
         }

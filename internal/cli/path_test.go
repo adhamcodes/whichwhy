@@ -38,7 +38,7 @@ func TestRunPathPrintsDiagnostics(t *testing.T) {
 		t.Fatalf("runPath() exit code = %d, want 0", code)
 	}
 	output := stdout.String()
-	for _, want := range []string{"PATH ENTRIES", "MISSING", "DUPLICATE #1", "SUMMARY", "did not change anything"} {
+	for _, want := range []string{"Entries", "MISSING", "DUPLICATE #1", "Summary", "did not change anything"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("stdout = %q, want %q", output, want)
 		}

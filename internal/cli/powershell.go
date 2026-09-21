@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"io"
 
 	"github.com/adhamcodes/whichwhy/internal/resolution"
@@ -10,13 +9,13 @@ import (
 
 func runPowerShellEvidence(args []string, stdout, stderr io.Writer, jsonOutput bool) int {
 	if len(args) < 3 {
-		fmt.Fprintln(stderr, "whichwhy: incomplete PowerShell evidence: expected base64 command, version, edition, and optional records")
+		printError(stderr, "incomplete PowerShell evidence: expected base64 command, version, edition, and optional records")
 		return 2
 	}
 
 	evidence, err := ps.DecodeEvidence(args[0], args[1], args[2], args[3:])
 	if err != nil {
-		fmt.Fprintf(stderr, "whichwhy: %v\n", err)
+		printError(stderr, err.Error())
 		return 2
 	}
 	report := resolution.PowerShell(evidence)
@@ -24,30 +23,4 @@ func runPowerShellEvidence(args []string, stdout, stderr io.Writer, jsonOutput b
 		return printCommandJSON(stdout, stderr, report)
 	}
 	return printCommandReport(stdout, report)
-}
-
-func printCommandCandidate(stdout io.Writer, match resolution.Candidate) {
-	switch match.Type {
-	case "external":
-		fmt.Fprintf(stdout, "  %s (PATH #%d)\n", match.Path, match.PathIndex)
-	case "Alias":
-		if match.AliasTarget != "" {
-			fmt.Fprintf(stdout, "  Alias %s -> %s\n", match.Name, match.AliasTarget)
-			return
-		}
-		fmt.Fprintf(stdout, "  Alias %s\n", match.Name)
-	case "Cmdlet":
-		if match.Source != "" {
-			fmt.Fprintf(stdout, "  Cmdlet %s [%s]\n", match.Name, match.Source)
-			return
-		}
-		fmt.Fprintf(stdout, "  Cmdlet %s\n", match.Name)
-	case "Application", "ExternalScript":
-		fmt.Fprintf(stdout, "  %s %s\n", match.Type, match.Name)
-		if match.Path != "" {
-			fmt.Fprintf(stdout, "    %s\n", match.Path)
-		}
-	default:
-		fmt.Fprintf(stdout, "  %s %s\n", match.Type, match.Name)
-	}
 }

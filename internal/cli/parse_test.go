@@ -81,7 +81,7 @@ func TestLiteralInspectionRoutingAndPresentation(t *testing.T) {
 						if err := json.Unmarshal(out.Bytes(), &doc); err != nil || doc.Command != name || doc.Policy != "process-path-order-v1" || doc.ClaimStrength != "policy-only" || doc.ResolutionScope != "process-external" {
 							t.Fatalf("literal JSON = %s; error=%v", &out, err)
 						}
-					} else if !strings.HasPrefix(out.String(), "WhichWhy — "+name+"\n\n") {
+					} else if !strings.HasPrefix(out.String(), "WhichWhy - "+safeText(name)+"\n") {
 						t.Fatalf("literal heading = %s", &out)
 					}
 				}

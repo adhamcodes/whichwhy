@@ -85,7 +85,7 @@ try { & {
                 $doc = ($json -join "`n") | ConvertFrom-Json
                 Assert-OracleJSONContract $doc
                 Assert-Ordinal ([string]$doc.command) $name 'JSON command'
-                Assert-Ordinal ([string]$human[0]) ('WhichWhy ' + [char]0x2014 + ' ' + $name) 'Human heading'
+                Assert-Ordinal ([string]$human[0]) ('WhichWhy - ' + $name) 'Human heading'
                 if ($jsonCode -ne $humanCode -or $jsonCode -ne [int](-not $aliasFixture)) { throw 'Unexpected human/JSON exit code' }
                 if ($doc.resolution_scope -ne 'powershell-loaded-session' -or $doc.policy -ne 'powershell-loaded-session-order-v1' -or $doc.claim_strength -ne 'shell-observed') { throw 'Shell claim changed' }
                 Assert-Ordinal ([string]$doc.shell.version) ([string]$PSVersionTable.PSVersion) 'Version'

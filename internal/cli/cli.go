@@ -11,26 +11,6 @@ import (
 	ps "github.com/adhamcodes/whichwhy/internal/shell/powershell"
 )
 
-const usage = `WhichWhy — inspect command-resolution evidence and its limits.
-
-Usage:
-  whichwhy <command>
-  whichwhy <command> --json
-  whichwhy inspect <literal-command>
-  whichwhy inspect <literal-command> --json
-  whichwhy path
-  whichwhy path --json
-  whichwhy doctor
-  whichwhy doctor --json
-  whichwhy init <shell>
-  whichwhy --help
-  whichwhy --version
-
-Use inspect when a command name conflicts with WhichWhy syntax or contains shell wildcard characters. Quote names for your shell.
-
-External command inspection, PATH diagnostics, and the installation doctor are available. PowerShell session integration is experimental.
-`
-
 type externalResolver func(string) (resolver.Result, error)
 
 // Run executes the command-line interface and returns a process exit code.
@@ -46,20 +26,21 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 func run(args []string, stdout, stderr io.Writer, version string, resolve externalResolver) int {
 	request, err := parseInvocation(args)
 	if err != nil {
-		fmt.Fprintf(stderr, "whichwhy: %v\n", err)
+		printError(stderr, err.Error())
+		fmt.Fprintln(stderr, "\nTry:\n  whichwhy --help")
 		return 2
 	}
 	switch request.operation {
 	case showHelp:
-		fmt.Fprint(stdout, usage)
+		printHelp(stdout)
 		return 0
 	case showVersion:
-		fmt.Fprintf(stdout, "whichwhy %s\n", version)
+		newHuman(stdout).line("", "whichwhy "+version, "")
 		return 0
 	case initPowerShell:
 		executable, err := os.Executable()
 		if err != nil {
-			fmt.Fprintf(stderr, "whichwhy: locate executable: %v\n", err)
+			printError(stderr, "locate executable: "+err.Error())
 			return 2
 		}
 		fmt.Fprint(stdout, ps.InitScript(executable))
@@ -77,7 +58,7 @@ func run(args []string, stdout, stderr io.Writer, version string, resolve extern
 	}
 	result, err := resolve(request.command)
 	if err != nil {
-		fmt.Fprintf(stderr, "whichwhy: %v\n", err)
+		printError(stderr, err.Error())
 		return 2
 	}
 	report := resolution.ProcessExternal(result)
@@ -85,48 +66,4 @@ func run(args []string, stdout, stderr io.Writer, version string, resolve extern
 		return printCommandJSON(stdout, stderr, report)
 	}
 	return printCommandReport(stdout, report)
-}
-
-func printCommandReport(stdout io.Writer, report resolution.Report) int {
-	fmt.Fprintf(stdout, "WhichWhy — %s\n\n", report.Command)
-	if report.Selected == nil {
-		fmt.Fprintln(stdout, report.NoCandidateReason)
-	} else {
-		if report.Scope == resolution.PowerShellScope {
-			fmt.Fprintln(stdout, "POWERSHELL WINNER (LOADED SESSION)")
-		} else if report.SelectionStatus == resolution.SelectionUncertain {
-			fmt.Fprintln(stdout, "PROCESS POLICY SELECTED CANDIDATE (PRECEDENCE UNCERTAIN)")
-		} else {
-			fmt.Fprintln(stdout, "PROCESS POLICY SELECTED CANDIDATE")
-		}
-		printCommandCandidate(stdout, *report.Selected)
-		if len(report.Alternatives) > 0 {
-			fmt.Fprintln(stdout, "\nOTHER CANDIDATES UNDER THIS POLICY")
-			for _, candidate := range report.Alternatives {
-				printCommandCandidate(stdout, candidate)
-			}
-		}
-		fmt.Fprintf(stdout, "\nWHY\n  %s\n", report.SelectionReason)
-	}
-	printClaim(stdout, report)
-	return report.ExitCode()
-}
-
-func printClaim(stdout io.Writer, report resolution.Report) {
-	fmt.Fprintf(stdout, "\nRESOLUTION SCOPE\n  %s\nPOLICY\n  %s\nCLAIM STRENGTH\n  %s\n", report.Scope, report.Policy, report.ClaimStrength)
-	if report.Inspection != nil {
-		fmt.Fprintf(stdout, "\nFILESYSTEM INSPECTION\n  %s\nSELECTION STATUS\n  %s\n", report.Inspection.Completeness, report.SelectionStatus)
-		for _, o := range report.Inspection.Observations {
-			if o.Incomplete() {
-				fmt.Fprintf(stdout, "  Attempt #%d, PATH #%d, %q: %s (%s)\n    %s\n", o.Attempt, o.PathIndex, o.Path, o.Error.Category, o.Error.Operation, o.Error.Message)
-			}
-		}
-	}
-	if report.Shell != nil {
-		fmt.Fprintf(stdout, "\nSHELL\n  %s %s (%s)\n", report.Shell.Name, report.Shell.Version, report.Shell.Edition)
-	}
-	fmt.Fprintln(stdout, "\nCURRENT LIMITS")
-	for _, limitation := range report.Limitations {
-		fmt.Fprintf(stdout, "  %s\n", limitation)
-	}
 }
