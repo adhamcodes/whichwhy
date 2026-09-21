@@ -241,6 +241,8 @@ func TestSourceIdentityFailsClosed(t *testing.T) {
 		{name: "untracked source", head: commit, tag: commit, status: "?? injected.go"},
 		{name: "missing tag", head: commit, fail: "refs/tags/v1.0.0-rc.1^{commit}"},
 		{name: "status failure", head: commit, tag: commit, fail: "status"},
+		{name: "missing remote main", head: commit, tag: commit, fail: "refs/remotes/origin/main^{commit}"},
+		{name: "unmerged source", head: commit, tag: commit, fail: "merge-base"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// Fake Git observations, never create or move real tags in tests.
@@ -259,6 +261,13 @@ func TestSourceIdentityFailsClosed(t *testing.T) {
 					return tc.tag, nil
 				case "status":
 					return tc.status, nil
+				case "refs/remotes/origin/main^{commit}":
+					return commit, nil
+				case "merge-base":
+					if strings.Join(args, " ") != "merge-base --is-ancestor "+commit+" "+commit {
+						t.Fatalf("incorrect ancestry check: %v", args)
+					}
+					return "", nil
 				default:
 					t.Fatalf("unexpected Git call: %v", args)
 					return "", nil
@@ -268,5 +277,60 @@ func TestSourceIdentityFailsClosed(t *testing.T) {
 				t.Fatalf("source check: %v", err)
 			}
 		})
+	}
+}
+
+func TestMainLineageWithRealGitHistory(t *testing.T) {
+	// Disposable commit graph; no tags are created, and no repository history
+	// or network state is changed. Real Git decides reachability, not a mock.
+	dir := t.TempDir()
+	git := func(args ...string) (string, error) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=Release Test", "GIT_AUTHOR_EMAIL=release@example.invalid", "GIT_COMMITTER_NAME=Release Test", "GIT_COMMITTER_EMAIL=release@example.invalid")
+		out, err := cmd.CombinedOutput()
+		return strings.TrimSpace(string(out)), err
+	}
+	mustGit := func(args ...string) string {
+		t.Helper()
+		out, err := git(args...)
+		if err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+		return out
+	}
+	mustGit("init", "--quiet")
+	tree := mustGit("mktree")
+	root := mustGit("commit-tree", tree, "-m", "reviewed base")
+	main := mustGit("commit-tree", tree, "-p", root, "-m", "main advanced")
+	divergent := mustGit("commit-tree", tree, "-p", root, "-m", "unmerged work")
+	mustGit("update-ref", "refs/remotes/origin/main", main)
+	// A local branch deliberately points to the unmerged commit. Resolving the
+	// short name "main" would incorrectly admit it and fail the divergent case.
+	mustGit("update-ref", "refs/heads/main", divergent)
+	for _, tc := range []struct {
+		name, commit string
+		ok           bool
+	}{
+		{"exact remote main", main, true},
+		{"older reviewed ancestor", root, true},
+		{"divergent despite spoofed local main", divergent, false},
+		{"unobservable release commit", strings.Repeat("a", 40), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := checkMainLineage(tc.commit, git); (err == nil) != tc.ok {
+				t.Fatalf("lineage: %v", err)
+			}
+		})
+	}
+	mustGit("update-ref", "-d", "refs/remotes/origin/main")
+	if err := checkMainLineage(divergent, git); err == nil {
+		t.Fatal("accepted missing remote main using local main")
+	}
+	if err := checkMainLineage(root, func(...string) (string, error) { return "", fmt.Errorf("unobservable Git state") }); err == nil {
+		t.Fatal("accepted failed Git observation")
+	}
+	if err := checkMainLineage(root, func(...string) (string, error) { return "", nil }); err == nil {
+		t.Fatal("accepted empty main identity")
 	}
 }

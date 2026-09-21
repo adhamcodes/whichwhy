@@ -31,31 +31,41 @@ Each archive contains the binary, `LICENSE` and a concise `README.md` from
 | --- | --- | --- |
 | `whichwhy_1.0.0_windows_amd64.zip` | Windows x64 | Native |
 | `whichwhy_1.0.0_linux_amd64.tar.gz` | Ubuntu x64 | Native |
-| `whichwhy_1.0.0_darwin_arm64.tar.gz` | macOS 15 arm64 | Native |
-| `whichwhy_1.0.0_darwin_amd64.tar.gz` | macOS 15 arm64 | Cross-compiled; no native amd64 runtime check |
+| `whichwhy_1.0.0_darwin_arm64.tar.gz` | `macos-15` arm64 | Native `--version` smoke test |
+| `whichwhy_1.0.0_darwin_amd64.tar.gz` | `macos-15-intel` x64 | Native `--version` smoke test |
 
 RC names use `1.0.0-rc.1`. The tool compares the actual host OS/architecture with
 the target before executing the built CLI's `--version`; logs explicitly report
 cross-compilation. Runner labels may evolve: review their actual architecture
 and version-check logs before making runtime-support claims.
+The Intel packaging gate checks the packaged build's version; it does not add a
+full Intel correctness/oracle job or expand shell-parity claims. Standalone
+correctness remains governed by the [oracle contract](oracle-contract.md).
 
 ## Fail-closed staging
 
 1. Check out the event SHA, validate the tag, and require HEAD and the peeled tag
-   to equal that SHA with a clean worktree.
+   to equal that SHA with a clean worktree. Explicitly fetch `refs/heads/main`
+   from `$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git` into
+   `refs/remotes/origin/main`, then require the release commit to be an ancestor
+   of that fetched commit with `git merge-base --is-ancestor`. An exact main
+   commit or an older ancestor passes; a divergent/unmerged commit, missing main
+   or failed Git observation fails. A local branch named `main` is never used.
 2. Call the ordinary CI workflow **from the same tagged commit**. This reruns
    formatting, uncached `go test ./... -count=1`, vet and CLI builds on Windows,
    Linux and macOS. `WHICHWHY_REQUIRE_ORACLES=1` is retained. Both version-checked
    Windows PowerShell 5.1/7 suites compose passive, transport, literal, isolation
    and response coverage. An earlier branch CI result cannot satisfy this gate.
 3. Only after that gate passes, build in fresh checkouts of the event SHA,
-   rechecking clean source/tag identity. Upload one archive per target using
+   refreshing remote main and rechecking clean source/tag identity and ancestry.
+   Upload one archive per target using
    immutable Actions artifacts scoped to this workflow run.
 4. Collect all four archives. Reject missing, extra, empty or non-regular entries
    and wrong version/target filenames. Generate `SHA256SUMS.txt` in sorted filename
    order with lowercase SHA-256, two spaces, filename and LF. There is exactly one
    entry per archive; the manifest does not hash itself.
-5. On Ubuntu, `scripts/create-draft-release.sh` rechecks source identity, the
+5. On Ubuntu, refresh remote main again before staging.
+   `scripts/create-draft-release.sh` rechecks source identity and main ancestry, the
    remote tag's peeled commit, complete assets and the manifest. It requires a
    successful API read and refuses any existing release for that tag, including
    an existing draft. It creates a **draft** with `--verify-tag`, so the CLI cannot
@@ -64,6 +74,15 @@ and version-check logs before making runtime-support claims.
    compare the manifest and verify all downloaded hashes. Any failure fails the
    run. There is no publish operation. Only this final job has `contents: write`;
    earlier jobs have `contents: read`. All action dependencies are SHA-pinned.
+
+Main can advance after tagging: equality with the current main tip is not required.
+The workflow overwrites the remote-tracking ref with an explicit authenticated
+fetch from its own GitHub repository before each validation/build/staging job's
+source checks; fetch failure stops the job even if a stale local ref exists.
+Credentials are passed only to that fetch, masked in logs and not persisted in Git
+configuration. The tag remains an immutable input and is not changed by the fetch.
+Reachability enforces main lineage, not the human review process itself: protecting
+main and ensuring changes there are reviewed remain repository governance duties.
 
 GitHub asset uploads are not transactional: an API/upload failure may leave an
 incomplete **draft**. A failed run is never approval to publish. Do not modify a
@@ -79,8 +98,8 @@ with staging. No workflow should run while a human is publishing that tag.
 
 Run from the repository root with Go and Git installed. The Go helper is portable;
 the draft script assumes Ubuntu Bash plus `gh`, `jq`, GNU `sha256sum`, `find`,
-`diff`, `cmp`, `mktemp` and standard file utilities. Git Bash is used only to call
-the portable helper in the Windows packaging job.
+`diff`, `cmp`, `mktemp` and standard file utilities. Workflow fetch steps use Bash,
+`base64` and `tr`, including Git Bash on Windows; packaging uses the portable helper.
 
 ```text
 go test ./scripts/release -count=1
@@ -95,10 +114,15 @@ go run ./scripts/release checksums v1.0.0-rc.1 dist/rc-test
 Use a new empty output directory for each run; existing archives/manifests are
 never overwritten. Local `build` permits a dirty tree for packaging development;
 it is not release evidence. The workflow always calls `source TAG COMMIT` before
-building/staging. No local example creates a tag or contacts the release API.
+building/staging, after explicitly fetching repository main into the remote ref.
+Standalone `source` checks use that fetched snapshot and do not fetch or prove its
+freshness themselves; a locally invented remote-tracking ref is not release evidence.
+No local example creates a tag or contacts the release API.
 Regression tests unpack ZIP/tar.gz, check contents and executable modes, test
 stable/prerelease versions from extracted native binaries, reject malformed tags
 and incomplete asset sets, and protect archive determinism and overwrite refusal.
+Disposable real Git commit graphs test exact/older main ancestry, divergent work,
+spoofed local main and missing/unobservable history without creating tags.
 
 Also run formatting, all uncached tests with required native oracles, vet, build,
 both Windows shell gates and `git diff --check`. Use actionlint to validate both
@@ -129,8 +153,9 @@ behavior; local tooling tests cannot substitute for it.
 - [ ] Load the bridge from the **downloaded binary** with `init powershell |
   Invoke-Expression` in separate fresh 5.1 and 7 sessions. Inspect `where`,
   `inspect path`, and JSON. Confirm loaded-session scope and no profile changes.
-- [ ] Complete the final RC audit, including any available native macOS Intel
-  artifact smoke test; record missing architecture evidence explicitly.
+- [ ] Complete the final RC audit. Require native `--version` records from both
+  macOS packaging jobs; record any further manual architecture smoke-test evidence
+  separately. The configured Intel GitHub-hosted job is unproven until this tag run.
 - [ ] Approve RC results before creating immutable `v1.0.0`. Its workflow creates
   another **draft**, and checksums/version must be checked again for those final
   assets; the RC binary is not the final-version binary.

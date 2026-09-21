@@ -29,7 +29,16 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Validate tag, exact commit and clean checkout
+      - name: Fetch reviewed main from the workflow repository
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\r\n')
+          echo "::add-mask::$auth"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch --no-tags \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" '+refs/heads/main:refs/remotes/origin/main'
+      - name: Validate tag, exact commit, clean checkout and main lineage
         run: go run ./scripts/release source "$RELEASE_TAG" "$RELEASE_COMMIT"
 
   verify:
@@ -53,7 +62,7 @@ jobs:
           - runner: macos-15
             os: darwin
             arch: arm64
-          - runner: macos-15
+          - runner: macos-15-intel
             os: darwin
             arch: amd64
     runs-on: ${{ matrix.runner }}
@@ -67,6 +76,15 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Fetch reviewed main from the workflow repository
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\r\n')
+          echo "::add-mask::$auth"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch --no-tags \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" '+refs/heads/main:refs/remotes/origin/main'
       - name: Build and package exact tag; check version when native
         shell: bash
         env:
@@ -102,6 +120,15 @@ jobs:
           pattern: release-*
           path: dist
           merge-multiple: true
+      - name: Fetch reviewed main from the workflow repository
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\r\n')
+          echo "::add-mask::$auth"
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch --no-tags \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" '+refs/heads/main:refs/remotes/origin/main'
       - name: Require complete asset set and generate SHA-256 manifest
         run: |
           go run ./scripts/release source "$RELEASE_TAG" "$RELEASE_COMMIT"
