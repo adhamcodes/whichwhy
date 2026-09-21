@@ -1,6 +1,7 @@
 # Product Contract
 
-WhichWhy is the current working codename. The public product name is not locked yet.
+The product name is WhichWhy; the CLI is `whichwhy`.
+The tagline is: Which command gets picked — and why?
 
 ## Product identity
 
