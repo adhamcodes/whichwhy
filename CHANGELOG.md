@@ -15,7 +15,8 @@ publication is implied by this entry.
 - Windows, Linux and macOS native process-policy verification; no general shell parity claim.
 - Draft-only GitHub Release pipeline with versioned Windows amd64, Linux amd64,
   macOS amd64 and arm64 archives, MIT license, usage reference and SHA-256 manifest.
-  macOS amd64 is cross-compiled without a native amd64 runtime gate.
+  Both macOS architectures have native packaged-binary `--version` smoke gates.
+  Release commits must be ancestors of explicitly fetched remote main history.
 
 See [V1 release-note material](docs/release-notes-v1.md) and the
 [release checklist](docs/release.md). Packaging does not change runtime behavior,

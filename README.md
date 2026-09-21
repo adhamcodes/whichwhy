@@ -74,8 +74,9 @@ directory and require an `OK` for your archive. On macOS, run
 compare the full hash with that filename's entry in `SHA256SUMS.txt`. Then extract
 with `tar -xzf <archive>` in a directory you choose and run `./whichwhy --version`.
 The manifest detects changed bytes; this pipeline does not provide signing or
-notarization. The macOS amd64 artifact is cross-compiled, without a native amd64
-runtime gate; see the [release procedure](docs/release.md).
+notarization. The release pipeline provides native packaged-binary `--version`
+smoke tests for both macOS Intel and Apple silicon; these do not expand the
+standalone correctness or shell-parity claims. See the [release procedure](docs/release.md).
 
 WhichWhy does not install itself or edit PATH. You choose where the binary lives
 and may add that directory to PATH yourself. There is no installer, self-updater,

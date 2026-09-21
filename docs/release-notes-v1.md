@@ -10,9 +10,11 @@ Which command gets picked — and why?
 
 Assets: Windows amd64, Linux amd64, macOS amd64 and arm64. Native CI verifies
 Windows, Linux and macOS process policies and Windows PowerShell 5.1/7. The
-macOS amd64 asset is cross-compiled on the macOS arm64 packaging runner; it has
-no native amd64 runtime gate. Each packaging log records whether `--version`
-ran natively. Standalone mode does not claim Bash, Zsh, Fish or general cmd.exe
+macOS packaging jobs provide native `--version` smoke tests on Intel
+(`macos-15-intel`) and arm64 (`macos-15`). These verify the packaged build's version;
+standalone correctness remains governed by the established test/oracle contracts.
+Each packaging log records whether `--version` ran natively.
+Standalone mode does not claim Bash, Zsh, Fish or general cmd.exe
 resolution parity, and discovery does not prove successful invocation.
 
 Download the matching archive and SHA256SUMS.txt. Follow the README checksum

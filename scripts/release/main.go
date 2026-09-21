@@ -85,6 +85,24 @@ func checkSource(tag, commit string, git func(...string) (string, error)) error 
 	if status != "" {
 		return fmt.Errorf("release requires a clean checkout: %s", status)
 	}
+	return checkMainLineage(commit, git)
+}
+
+func checkMainLineage(commit string, git func(...string) (string, error)) error {
+	// The workflow explicitly refreshes this fully qualified remote ref from
+	// its GitHub repository before source checks. Never resolve a local main.
+	main, err := git("rev-parse", "--verify", "refs/remotes/origin/main^{commit}")
+	if err != nil {
+		return fmt.Errorf("cannot observe fetched remote main: %w", err)
+	}
+	if !regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(main) {
+		return fmt.Errorf("fetched remote main did not resolve to a full commit SHA")
+	}
+	// Main may have advanced since the tag. Only a successful ancestry check
+	// establishes lineage; both non-ancestor and Git observation errors fail.
+	if _, err := git("merge-base", "--is-ancestor", commit, main); err != nil {
+		return fmt.Errorf("cannot establish release commit %s as an ancestor of fetched remote main %s: %w", commit, main, err)
+	}
 	return nil
 }
 
