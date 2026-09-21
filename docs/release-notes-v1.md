@@ -1,3 +1,5 @@
+# WhichWhy v1.0.0
+
 Which command gets picked — and why?
 
 - Explain command selection and alternatives within an explicit evidence scope.
@@ -14,13 +16,13 @@ macOS packaging jobs provide native `--version` smoke tests on Intel
 (`macos-15-intel`) and arm64 (`macos-15`). These verify the packaged build's version;
 standalone correctness remains governed by the established test/oracle contracts.
 Each packaging log records whether `--version` ran natively.
-Standalone mode does not claim Bash, Zsh, Fish or general cmd.exe
-resolution parity, and discovery does not prove successful invocation.
 
-Download the matching archive and SHA256SUMS.txt. Follow the README checksum
+Standalone mode does not claim Bash, Zsh, Fish or general cmd.exe resolution
+parity, and discovery does not prove successful invocation.
+
+Download the matching archive and `SHA256SUMS.txt`. Follow the README checksum
 instructions before extracting. Archives include the binary, MIT license and
 usage reference. There is no installer, automatic PATH editing, self-updater,
-package-manager distribution, signing or notarization in this pipeline.
+package-manager distribution, signing or notarization in V1.
 
-This draft requires artifact smoke tests and Mission Control approval before
-publication. See docs/release.md in the tagged source for the release checklist.
+See `docs/release.md` in the tagged source for the release and verification procedure.
