@@ -1,6 +1,6 @@
 # Contributing to WhichWhy
 
-WhichWhy is currently in private early development. These guidelines establish the standards that will be used when the repository opens to contributors.
+WhichWhy welcomes focused contributions that preserve its evidence-first, passive command-resolution contract.
 
 ## Engineering principles
 
