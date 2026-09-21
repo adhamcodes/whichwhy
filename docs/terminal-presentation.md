@@ -15,14 +15,21 @@ precedence uncertainty. A complete process miss or loaded-session miss is
 intact but adds an immediate incomplete-inspection notice. Shell reports do not
 invent process inspection completeness or invocation guarantees.
 
-Why comes from the report's reason, followed by its alternatives, resolution,
-scope, limitations, and a passivity note. PowerShell retains supplied candidate
+Why translates the report's established explanations into ordinary language;
+unrecognized explanations pass through unchanged. It is followed by alternatives,
+resolution, concise scope, and a passivity note. Technical policy identifiers and
+the exhaustive generic limitation list remain in JSON and technical documentation.
+Scope notes summarize shell differences and execution limits; incomplete reports
+still show uncertainty and every observation failure. Only explicitly recognized
+generic limitations are summarized; unfamiliar or result-specific limitations
+remain visible under Additional limits. PowerShell retains supplied candidate
 metadata (including source) and shell version/edition. Ordinary negative and
 skipped filesystem attempts remain in JSON; human output lists every incomplete
 observation, with its original attempt and PATH index and diagnostic.
 
 PATH leads with summary counters and problem entries before the full ordered
-entry list and raw PATH. The header counts affected entries once; summary counts
+entry list. The redundant whole raw PATH is available in JSON, not appended to the
+human report. The header counts affected entries once; summary counts
 can overlap. Empty/duplicate entries can also have filesystem problems. Raw and
 effective spelling are shown together when different. Empty PATH is explicitly
 identified; unset PATH retains its stderr/exit-1 behavior.
@@ -56,6 +63,9 @@ copy/paste and use terminal soft wrapping. Borders are omitted for narrow window
 long answers, or non-ASCII answer text whose exact cell width is uncertain. Text
 is never truncated. Very small or unknown widths use an open layout. Width
 estimation for prose is conservative; it is not a full Unicode grapheme engine.
+The open layout uses a small ASCII `>` marker and whitespace to distinguish the
+primary answer, including in ANSI-only terminals and fully plain output. It does
+not require a console encoding change or a relaxation of capability detection.
 
 PowerShell's existing bridge explicitly redirects the CLI response and decodes it
 as strict UTF-8 before forwarding success/error lines. It therefore receives the

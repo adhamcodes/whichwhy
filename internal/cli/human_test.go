@@ -135,7 +135,7 @@ func TestHumanResultStates(t *testing.T) {
 						t.Fatalf("lost failure: %s", text)
 					}
 				}
-				if !strings.Contains(text, "policy-only") {
+				if !strings.Contains(strings.Join(strings.Fields(text), " "), "may choose differently") {
 					t.Fatalf("lost scope: %s", text)
 				}
 				first := out.String()
@@ -158,7 +158,7 @@ func TestHumanPowerShellSelectionAndMetadata(t *testing.T) {
 	h := humanRenderer{out: &out, terminalOptions: terminalOptions{true, true, 90}}
 	h.command(r)
 	s := stripTestStyles(out.String())
-	for _, want := range []string{"SELECTED", "Alias where -> Where-Object", "Source: alias module", "Shadowed (loaded session)", `C:\Windows\System32\where.exe`, "Source: application source", "shell-observed", "PowerShell 7.6.5 (Core)", "Safe inspection", "╭"} {
+	for _, want := range []string{"SELECTED", "Alias where -> Where-Object", "Source: alias module", "Shadowed in this session", `C:\Windows\System32\where.exe`, "Source: application source", "Current loaded PowerShell session", "PowerShell 7.6.5 (Core)", "Safe inspection", "╭"} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("missing %q: %s", want, s)
 		}
@@ -183,7 +183,7 @@ func TestHumanPATHDiagnosticsRetainEvidence(t *testing.T) {
 	var out bytes.Buffer
 	printPathReport(&out, r)
 	s := out.String()
-	for _, want := range []string{"5 entries need attention", "6 entries; 2 missing; 1 duplicate", "1 empty; 1 not-directory; 1 errors", "EMPTY, OK", "DUPLICATE #3", "NOT DIRECTORY", "ERROR", "permission denied", `raw: "" -> effective: "."`, fmt.Sprintf("%q", r.RawValue)} {
+	for _, want := range []string{"5 entries need attention", "6 entries; 2 missing; 1 duplicate", "1 empty; 1 not-directory; 1 errors", "EMPTY, OK", "DUPLICATE #3", "NOT DIRECTORY", "ERROR", "permission denied", `raw: "" -> effective: "."`} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("missing %q: %s", want, s)
 		}

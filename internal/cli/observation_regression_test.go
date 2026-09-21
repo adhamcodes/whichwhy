@@ -76,7 +76,7 @@ func TestFilesystemObservationSilentLossRegression(t *testing.T) {
 					t.Fatalf("lost failure: %s", &machine)
 				}
 			}
-			for _, text := range []string{tc.completeness, tc.selection, doc.Reason, doc.NoCandidateReason} {
+			for _, text := range []string{tc.completeness, humanSelection(tc.selection), humanReason(doc.Reason), humanReason(doc.NoCandidateReason)} {
 				if !strings.Contains(human.String(), text) {
 					t.Fatalf("human/JSON disagree: %s / %s", &human, &machine)
 				}
@@ -84,7 +84,7 @@ func TestFilesystemObservationSilentLossRegression(t *testing.T) {
 			if tc.completeness == "incomplete" && !strings.Contains(human.String(), filepath.Base(badEntry)) {
 				t.Fatalf("failure operand hidden: %s", &human)
 			}
-			if tc.selection == "precedence-uncertain" && strings.Contains(human.String(), "First eligible candidate") {
+			if tc.selection == "precedence-uncertain" && strings.Contains(human.String(), "First eligible external command") {
 				t.Fatalf("overclaim: %s", &human)
 			}
 			if _, err := os.Stat("inspected.marker"); !os.IsNotExist(err) {

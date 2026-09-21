@@ -182,7 +182,7 @@ func main() {
 			if tc.name == "recognized-missing" {
 				classification = "EXPECTED DELIBERATE DIFFERENCE"
 			}
-			if !strings.Contains(human.String(), "shell was not observed") {
+			if !strings.Contains(human.String(), "may choose differently") {
 				t.Fatalf("missing process-policy limitation: %s", &human)
 			}
 			t.Logf("%s: cmd selected %q; process policy: %v", classification, tc.cmd, tc.policy)
