@@ -169,13 +169,19 @@ func (h humanRenderer) panel(lines []string) {
 	boxed = boxed && width+7 < h.width
 	if boxed {
 		fmt.Fprintln(h.out, "  "+h.styled("╭"+strings.Repeat("─", width+2)+"╮", quiet))
+	} else {
+		h.blank()
 	}
-	for _, line := range lines {
+	for i, line := range lines {
 		if boxed {
 			s := safeText(line)
 			fmt.Fprintln(h.out, "  "+h.styled("│", quiet)+" "+s+strings.Repeat(" ", width-len(s))+" "+h.styled("│", quiet))
 		} else {
-			h.line("    ", line, "")
+			if i == 0 {
+				h.line("  "+h.styled(">", accent)+" ", line, "")
+			} else {
+				h.line("    ", line, quiet)
+			}
 		}
 	}
 	if boxed {
@@ -208,7 +214,7 @@ func printHelp(out io.Writer) {
 		}
 	}
 	h.section("Scope")
-	h.item("Standalone: process PATH policy; your shell may choose differently.", false, quiet)
+	h.item("Standalone: external commands in PATH; your shell may choose differently.", false, quiet)
 	h.item("PowerShell bridge: passive discovery in the current loaded session (experimental).", false, quiet)
 	h.item("Use inspect for reserved or wildcard names. Quote names for your shell.", true, quiet)
 }

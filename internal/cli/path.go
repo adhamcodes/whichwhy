@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/adhamcodes/whichwhy/internal/pathdiag"
-	"github.com/adhamcodes/whichwhy/internal/resolution"
 )
 
 type envLookup func(string) (string, bool)
@@ -77,7 +76,7 @@ func (h humanRenderer) path(r pathdiag.Report) {
 	if len(problems) == 0 {
 		text := "No entry problems observed."
 		if len(r.Entries) == 0 {
-			text = "PATH is set but empty. This process policy has no directories to search."
+			text = "PATH is set but empty. There are no directories to search."
 		}
 		h.item(text, true, "")
 	}
@@ -107,10 +106,8 @@ func (h humanRenderer) path(r pathdiag.Report) {
 			h.line("     ", e.Error, "")
 		}
 	}
-	h.section("Raw PATH")
-	h.line("    ", fmt.Sprintf("%q", r.RawValue), quiet)
 	h.section("Scope")
-	h.item(resolution.ProcessPolicy+" (Go platform-native PATH parsing; shell search may differ).", true, quiet)
+	h.item("PATH entries visible to this process; your shell's search rules may differ. Exact raw PATH is preserved in JSON.", true, quiet)
 	h.section("Safe inspection")
 	h.item("WhichWhy only inspected PATH. It did not change anything.", true, quiet)
 }

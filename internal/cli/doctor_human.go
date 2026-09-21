@@ -19,19 +19,19 @@ func (h humanRenderer) doctor(r doctorReport) int {
 	h.section("Command discovery")
 	switch r.Discovery {
 	case doctorDiscoveryCurrent:
-		h.item("The process policy selects this running executable for 'whichwhy'.", true, good)
+		h.item("This process's PATH search selects the running 'whichwhy' executable.", true, good)
 	case doctorDiscoveryDifferent:
-		h.item("The process policy selects a different executable for 'whichwhy'.", false, warn)
+		h.item("This process's PATH search selects a different executable for 'whichwhy'.", false, warn)
 		h.item("Invoking by name may reach a different installation. Review PATH order with whichwhy path and choose the intended installation.", true, "")
 	case doctorDiscoveryMissing:
-		h.item("No 'whichwhy' candidate was observed under the process policy.", false, warn)
+		h.item("No 'whichwhy' executable was found in this process's PATH search.", false, warn)
 		h.item("Invoking by name may fail. Review whichwhy path and add the intended build directory to PATH yourself if needed.", true, "")
 	case doctorDiscoveryUncertain:
-		h.item("Incomplete inspection prevents definitive process-policy discovery for 'whichwhy'.", false, warn)
+		h.item("Incomplete inspection leaves the PATH search for 'whichwhy' uncertain.", false, warn)
 		h.item("Unresolved attempts may conceal candidates. Review the observation failures and directory access, then retry.", true, "")
 	}
 	if r.Resolution.Selected != nil {
-		h.line("    ", "Policy candidate: "+r.Resolution.Selected.Path, "")
+		h.line("    ", "Observed executable: "+r.Resolution.Selected.Path, "")
 	}
 	if len(r.Resolution.Alternatives) > 0 {
 		h.section("Other WhichWhy candidates")

@@ -28,7 +28,7 @@ func TestRunPowerShellEvidenceShowsAliasWinner(t *testing.T) {
 		"SELECTED",
 		"Alias wwprobe -> Get-Date",
 		"PowerShell 5.1.26100.9444 (Desktop)",
-		"Unloaded module auto-loading is not modeled yet",
+		"Unloaded modules may add commands",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("stdout = %q, want %q", output, want)

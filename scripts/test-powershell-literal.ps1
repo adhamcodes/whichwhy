@@ -37,7 +37,7 @@ function Assert-LiteralReport([string]$name, [object[]]$expected) {
     Assert-OracleText $doc.command $name 'Literal command identity'
     Assert-OracleText ($texts[1].Split([char]10)[0]) ('WhichWhy - ' + $name) 'Literal human heading'
     if ($doc.resolution_scope -ne 'powershell-loaded-session' -or $doc.policy -ne 'powershell-loaded-session-order-v1' -or $doc.claim_strength -ne 'shell-observed') { throw 'Literal shell claim changed' }
-    foreach ($claim in @($doc.resolution_scope, $doc.policy, $doc.claim_strength)) { if (-not $texts[1].Contains($claim)) { throw 'Human shell claim changed' } }
+    foreach ($claim in @('Current loaded PowerShell session', 'Unloaded modules may add commands', 'does not guarantee execution')) { if (-not $texts[1].Contains($claim)) { throw 'Human shell scope or limits changed' } }
     if ($doc.candidates.Count -ne $expected.Count) { throw "Literal candidate count for <$name>: $($doc.candidates.Count), expected $($expected.Count)" }
     $position = 0
     for ($i = 0; $i -lt $expected.Count; $i++) {

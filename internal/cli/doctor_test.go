@@ -32,7 +32,7 @@ func TestRunDoctorReportsConsistentCommandDiscovery(t *testing.T) {
 		t.Fatalf("runDoctor() exit code = %d, want 0", code)
 	}
 	output := stdout.String()
-	for _, want := range []string{"WhichWhy - doctor", "1.2.3", "The process policy selects this running executable for 'whichwhy'", "healthy", "changed nothing"} {
+	for _, want := range []string{"WhichWhy - doctor", "1.2.3", "This process's PATH search selects the running 'whichwhy' executable", "healthy", "changed nothing"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("stdout = %q, want %q", output, want)
 		}
@@ -83,7 +83,7 @@ func TestRunDoctorWarnsWhenCommandIsNotOnPath(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("runDoctor() exit code = %d, want 1", code)
 	}
-	if !strings.Contains(stdout.String(), "No 'whichwhy' candidate was observed under the process policy") {
+	if !strings.Contains(stdout.String(), "No 'whichwhy' executable was found in this process's PATH search") {
 		t.Fatalf("stdout = %q, want not-discoverable warning", stdout.String())
 	}
 	if stderr.Len() != 0 {

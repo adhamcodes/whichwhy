@@ -74,7 +74,7 @@ func TestWindowsPolicyVersusCmdOracle(t *testing.T) {
 				t.Fatalf("unexpected policy result: %s", &machine)
 			}
 			if wantCount == 0 {
-				if doc.Selected != nil || doc.NoCandidateReason == "" || !strings.Contains(human.String(), doc.NoCandidateReason) {
+				if doc.Selected != nil || doc.NoCandidateReason == "" || !strings.Contains(human.String(), humanReason(doc.NoCandidateReason)) {
 					t.Fatalf("missing policy result overclaims: %s / %s", &human, &machine)
 				}
 			} else {
@@ -85,7 +85,7 @@ func TestWindowsPolicyVersusCmdOracle(t *testing.T) {
 					t.Fatalf("candidate order changed: %s", &machine)
 				}
 			}
-			if !strings.Contains(human.String(), "shell was not observed") {
+			if !strings.Contains(human.String(), "may choose differently") {
 				t.Fatalf("human/JSON disagreement: %s", &human)
 			}
 			if _, err := os.Stat("oracle.marker"); !os.IsNotExist(err) {

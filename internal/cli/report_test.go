@@ -76,7 +76,7 @@ func assertReportPresentations(t *testing.T, r resolution.Report) {
 		t.Fatalf("JSON changed completed observation evidence: %#v", doc)
 	}
 	if r.Inspection != nil {
-		for _, text := range []string{r.Inspection.Completeness, r.SelectionStatus} {
+		for _, text := range []string{r.Inspection.Completeness, humanSelection(r.SelectionStatus)} {
 			if !strings.Contains(human.String(), text) {
 				t.Fatalf("human omitted %q: %s", text, &human)
 			}
@@ -89,7 +89,7 @@ func assertReportPresentations(t *testing.T, r resolution.Report) {
 	} else if doc.Selected == nil || *doc.Selected != candidateJSON(*r.Selected) {
 		t.Fatalf("JSON changed selected candidate: %#v", doc)
 	}
-	for _, text := range append([]string{r.Policy, r.Scope, r.ClaimStrength, r.SelectionReason}, r.Limitations...) {
+	for _, text := range []string{humanReason(r.SelectionReason), humanReason(r.NoCandidateReason)} {
 		if !strings.Contains(human.String(), text) {
 			t.Fatalf("human output omitted %q: %s", text, &human)
 		}
@@ -153,7 +153,7 @@ func TestDoctorPresentationsCarryProcessClaim(t *testing.T) {
 	if doc.CommandDiscovery.PathSelected != r.Resolution.Selected.Path || doc.CommandDiscovery.Policy != "process-path-order-v1" || doc.CommandDiscovery.ClaimStrength != "policy-only" || doc.CommandDiscovery.ResolutionScope != "process-external" || !reflect.DeepEqual(doc.Limitations, r.Resolution.Limitations) {
 		t.Fatalf("doctor JSON lost scoped report: %#v", doc)
 	}
-	for _, text := range append([]string{r.Resolution.Selected.Path, r.Resolution.Policy, r.Resolution.Scope, r.Resolution.ClaimStrength}, r.Resolution.Limitations...) {
+	for _, text := range []string{r.Resolution.Selected.Path, "External commands visible to this process", "may choose differently", "does not guarantee execution"} {
 		if !strings.Contains(human.String(), text) {
 			t.Fatalf("doctor omitted %q", text)
 		}

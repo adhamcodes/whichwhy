@@ -113,7 +113,7 @@ func assertPATHCorrelation(t *testing.T, value string, indices []int) pathdiag.R
 	if !reflect.DeepEqual(doc, pathJSONDocument(d)) || doc.RawValue != value || doc.Policy != "process-path-order-v1" || doc.SchemaVersion != 1 {
 		t.Fatalf("JSON evidence mismatch: %s", &machine)
 	}
-	for _, text := range []string{fmt.Sprintf("%q", value), doc.Policy, "shell search may differ", fmt.Sprintf("%d entries; %d missing; %d duplicate", doc.Summary.Entries, doc.Summary.Missing, doc.Summary.Duplicate), fmt.Sprintf("%d empty; %d not-directory; %d errors", doc.Summary.Empty, doc.Summary.NotDirectory, doc.Summary.Errors)} {
+	for _, text := range []string{"search rules may differ", fmt.Sprintf("%d entries; %d missing; %d duplicate", doc.Summary.Entries, doc.Summary.Missing, doc.Summary.Duplicate), fmt.Sprintf("%d empty; %d not-directory; %d errors", doc.Summary.Empty, doc.Summary.NotDirectory, doc.Summary.Errors)} {
 		if !strings.Contains(human.String(), text) {
 			t.Fatalf("human omitted %q: %s", text, &human)
 		}

@@ -62,7 +62,7 @@ func TestRunCommandShowsPolicySelectionAndAlternatives(t *testing.T) {
 		t.Fatalf("run() exit code = %d, want 0", code)
 	}
 	output := stdout.String()
-	for _, want := range []string{"SELECTED", `/first/python`, "Also found (process policy)", `/second/python`, "Limits"} {
+	for _, want := range []string{"SELECTED", `/first/python`, "Also found", `/second/python`, "Scope"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("stdout = %q, want %q", output, want)
 		}
@@ -84,7 +84,7 @@ func TestRunCommandReportsMissingExternalCandidate(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("run() exit code = %d, want 1", code)
 	}
-	if !strings.Contains(stdout.String(), "No external command candidate") {
+	if !strings.Contains(stdout.String(), "No external command was found") {
 		t.Fatalf("stdout = %q, want missing-candidate message", stdout.String())
 	}
 	if stderr.Len() != 0 {

@@ -64,7 +64,7 @@ func TestObservationPresentationsAndDoctor(t *testing.T) {
 			if !reflect.DeepEqual(doc.Inspection, r.Inspection) || doc.SelectionStatus != r.SelectionStatus || !strings.Contains(human.String(), "controlled denial") {
 				t.Fatalf("doctor presentation lost evidence: %#v %s", j, &human)
 			}
-			if tc.discovery == doctorDiscoveryUncertain && strings.Contains(human.String(), "OK       The process policy selects") {
+			if tc.discovery == doctorDiscoveryUncertain && strings.Contains(human.String(), "This process's PATH search selects the running") {
 				t.Fatalf("doctor overclaims: %s", &human)
 			}
 		})

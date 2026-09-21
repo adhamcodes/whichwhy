@@ -8,15 +8,16 @@ shadows. This excerpt comes from the built CLI in PowerShell 7.6.5 on Windows:
 
 ```text
 WhichWhy - where
-[ loaded-session discovery ]
+[ PowerShell session ]
 
   SELECTED
-    Alias where -> Where-Object
+
+  > Alias where -> Where-Object
 
   Why
   - PowerShell itself reported this match first for the current loaded session.
 
-  Shadowed (loaded session)
+  Shadowed in this session
   - Application where.exe
      C:\WINDOWS\system32\where.exe
      Source: C:\WINDOWS\system32\where.exe
