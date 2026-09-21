@@ -78,53 +78,10 @@ func inspectDoctor(version string, executable executableLocator, resolve externa
 func runDoctor(stdout, stderr io.Writer, version string, executable executableLocator, resolve externalResolver) int {
 	report, err := inspectDoctor(version, executable, resolve)
 	if err != nil {
-		fmt.Fprintf(stderr, "whichwhy: %v\n", err)
+		printError(stderr, "failure: "+err.Error()+"; verify the running executable and PATH access, then retry")
 		return 2
 	}
 	return printDoctorResult(stdout, report)
-}
-
-func printDoctorResult(stdout io.Writer, report doctorReport) int {
-	fmt.Fprintln(stdout, "WhichWhy — doctor")
-	fmt.Fprintf(stdout, "\nVERSION\n  %s\n", report.Version)
-	fmt.Fprintf(stdout, "\nPLATFORM\n  %s/%s\n", report.OS, report.Arch)
-	fmt.Fprintf(stdout, "\nRUNNING EXECUTABLE\n  %s\n", report.RunningExecutable)
-	fmt.Fprintln(stdout, "\nCOMMAND DISCOVERY")
-
-	switch report.Discovery {
-	case doctorDiscoveryUncertain:
-		fmt.Fprintln(stdout, "  WARNING  Incomplete inspection prevents definitive process-policy discovery for 'whichwhy'.")
-		if report.Resolution.Selected != nil {
-			fmt.Fprintf(stdout, "           Selected among observed candidates: %s\n", report.Resolution.Selected.Path)
-		}
-	case doctorDiscoveryMissing:
-		fmt.Fprintln(stdout, "  WARNING  No 'whichwhy' candidate was observed under the process policy.")
-	case doctorDiscoveryCurrent:
-		fmt.Fprintln(stdout, "  OK       The process policy selects this running executable for 'whichwhy'.")
-	case doctorDiscoveryDifferent:
-		fmt.Fprintln(stdout, "  WARNING  The process policy selects a different executable for 'whichwhy'.")
-		fmt.Fprintf(stdout, "           Policy candidate: %s\n", report.Resolution.Selected.Path)
-		fmt.Fprintf(stdout, "           Running:     %s\n", report.RunningExecutable)
-	}
-
-	if len(report.Resolution.Alternatives) > 0 {
-		fmt.Fprintln(stdout, "\nOTHER WHICHWHY CANDIDATES")
-		for _, candidate := range report.Resolution.Alternatives {
-			fmt.Fprintf(stdout, "  %s\n", candidate.Path)
-		}
-	}
-
-	fmt.Fprintln(stdout, "\nSUMMARY")
-	if report.Status == 0 {
-		fmt.Fprintln(stdout, "  OK — command discovery is consistent with the executable that is running.")
-	} else {
-		fmt.Fprintln(stdout, "  WARNING — WhichWhy is running, but its command discovery may be incomplete or ambiguous.")
-	}
-
-	printClaim(stdout, report.Resolution)
-	fmt.Fprintln(stdout, "\nSAFETY")
-	fmt.Fprintln(stdout, "  Doctor only inspected the running executable and command search results. It changed nothing.")
-	return report.Status
 }
 
 func distinctExecutableCandidates(candidates []resolver.Candidate) []resolver.Candidate {

@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"strings"
 
@@ -148,7 +147,7 @@ type jsonDoctorDocument struct {
 func printCommandJSON(stdout, stderr io.Writer, report resolution.Report) int {
 	doc := commandJSONDocument(report)
 	if err := writeJSON(stdout, doc); err != nil {
-		fmt.Fprintf(stderr, "whichwhy: write JSON: %v\n", err)
+		printError(stderr, "write JSON: "+err.Error())
 		return 2
 	}
 	return report.ExitCode()
@@ -166,7 +165,7 @@ func runPathJSON(stdout, stderr io.Writer, lookup envLookup, inspect pathInspect
 			Error:         "PATH is not set",
 		}
 		if err := writeJSON(stdout, doc); err != nil {
-			fmt.Fprintf(stderr, "whichwhy: write JSON: %v\n", err)
+			printError(stderr, "write JSON: "+err.Error())
 			return 2
 		}
 		return 1
@@ -174,7 +173,7 @@ func runPathJSON(stdout, stderr io.Writer, lookup envLookup, inspect pathInspect
 
 	doc := pathJSONDocument(inspect(value))
 	if err := writeJSON(stdout, doc); err != nil {
-		fmt.Fprintf(stderr, "whichwhy: write JSON: %v\n", err)
+		printError(stderr, "write JSON: "+err.Error())
 		return 2
 	}
 	return 0
@@ -183,13 +182,13 @@ func runPathJSON(stdout, stderr io.Writer, lookup envLookup, inspect pathInspect
 func runDoctorJSON(stdout, stderr io.Writer, version string, executable executableLocator, resolve externalResolver) int {
 	report, err := inspectDoctor(version, executable, resolve)
 	if err != nil {
-		fmt.Fprintf(stderr, "whichwhy: %v\n", err)
+		printError(stderr, err.Error())
 		return 2
 	}
 
 	doc := doctorJSONDocument(report)
 	if err := writeJSON(stdout, doc); err != nil {
-		fmt.Fprintf(stderr, "whichwhy: write JSON: %v\n", err)
+		printError(stderr, "write JSON: "+err.Error())
 		return 2
 	}
 	return report.Status

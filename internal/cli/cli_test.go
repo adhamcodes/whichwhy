@@ -18,7 +18,7 @@ func TestRunWithoutArgumentsShowsHelp(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run() exit code = %d, want 0", code)
 	}
-	if !strings.Contains(stdout.String(), "Usage:") {
+	if !strings.Contains(stdout.String(), "Usage") {
 		t.Fatalf("stdout = %q, want usage text", stdout.String())
 	}
 	if stderr.Len() != 0 {
@@ -62,7 +62,7 @@ func TestRunCommandShowsPolicySelectionAndAlternatives(t *testing.T) {
 		t.Fatalf("run() exit code = %d, want 0", code)
 	}
 	output := stdout.String()
-	for _, want := range []string{"PROCESS POLICY SELECTED CANDIDATE", `/first/python`, "OTHER CANDIDATES UNDER THIS POLICY", `/second/python`, "CURRENT LIMIT"} {
+	for _, want := range []string{"SELECTED", `/first/python`, "Also found (process policy)", `/second/python`, "Limits"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("stdout = %q, want %q", output, want)
 		}

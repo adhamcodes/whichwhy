@@ -35,7 +35,7 @@ function Assert-LiteralReport([string]$name, [object[]]$expected) {
     $doc = $texts[0] | ConvertFrom-Json
     Assert-OracleJSONContract $doc
     Assert-OracleText $doc.command $name 'Literal command identity'
-    Assert-OracleText ($texts[1].Split([char]10)[0]) ('WhichWhy ' + [char]0x2014 + ' ' + $name) 'Literal human heading'
+    Assert-OracleText ($texts[1].Split([char]10)[0]) ('WhichWhy - ' + $name) 'Literal human heading'
     if ($doc.resolution_scope -ne 'powershell-loaded-session' -or $doc.policy -ne 'powershell-loaded-session-order-v1' -or $doc.claim_strength -ne 'shell-observed') { throw 'Literal shell claim changed' }
     foreach ($claim in @($doc.resolution_scope, $doc.policy, $doc.claim_strength)) { if (-not $texts[1].Contains($claim)) { throw 'Human shell claim changed' } }
     if ($doc.candidates.Count -ne $expected.Count) { throw "Literal candidate count for <$name>: $($doc.candidates.Count), expected $($expected.Count)" }
@@ -117,7 +117,7 @@ try { & {
     Assert-OracleText (($optionJSON -join "`n" | ConvertFrom-Json).command) '--json' 'Unquoted JSON identity'
     $optionHuman = @(whichwhy inspect --json)
     if ($LASTEXITCODE -ne 0) { throw 'Unquoted human --json identity was not inspected' }
-    Assert-OracleText $optionHuman[0] ('WhichWhy ' + [char]0x2014 + ' --json') 'Unquoted human identity'
+    Assert-OracleText $optionHuman[0] ('WhichWhy - --json') 'Unquoted human identity'
     # An application's Source is its file path, not a module qualifier.
     Assert-LiteralReport ((Join-Path $lab 'ww[f9].cmd') + '\ww[f9].cmd') @()
 

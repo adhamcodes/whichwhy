@@ -71,7 +71,7 @@ try {
                     }
                 } elseif ($null -ne $doc.selected -or $doc.candidates.Count -ne 0) { throw 'Fabricated missing selection' }
                 $human = @(whichwhy @arguments 2> $stderrFile)
-                if ($LASTEXITCODE -ne $code -or -not [string]::Equals($human[0], ('WhichWhy ' + [char]0x2014 + ' ' + $identity), [StringComparison]::Ordinal)) { throw 'Human response changed identity/status' }
+                if ($LASTEXITCODE -ne $code -or -not [string]::Equals($human[0], ('WhichWhy - ' + $identity), [StringComparison]::Ordinal)) { throw 'Human response changed identity/status' }
                 Assert-ResponseEncoding
             }
             foreach ($json in @($false, $true)) {
