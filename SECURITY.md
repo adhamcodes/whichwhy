@@ -11,6 +11,11 @@ WhichWhy inspects command-resolution state, so safety and trust are part of the 
 
 ## Reporting a vulnerability
 
-While the repository is private, security issues can be reported directly to the maintainer. Before the repository becomes public, a private vulnerability-reporting path will be configured and documented here.
+For the public repository, report security vulnerabilities privately through GitHub's
+repository security advisory flow using **Security → Advisories → Report a vulnerability**.
 
-Please do not publish exploit details in a public issue before a private reporting path has been established.
+Do not publish exploit details in a public issue or discussion.
+
+Private vulnerability reporting must be enabled before the public V1 release is
+published. If the private-reporting control is not available, treat that as a release
+blocker rather than asking reporters to disclose details publicly.
