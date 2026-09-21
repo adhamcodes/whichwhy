@@ -38,10 +38,53 @@ process PATH policy would select.
 WhichWhy is under active development. The core runs locally without an account,
 remote service, or AI model. Inspection does not execute the commands it finds.
 
-## Build and use
+## Installation
 
-The current installation path is a source build with **Go 1.27**. From this
-repository:
+### GitHub Release binaries
+
+[GitHub Releases](https://github.com/adhamcodes/whichwhy/releases) are the canonical
+V1 binary distribution surface. Until the RC audit and publication are complete,
+public V1 binaries may not be available; draft assets require repository access.
+Choose the archive for your OS and architecture:
+
+| Target | V1 archive |
+| --- | --- |
+| Windows x86-64 | `whichwhy_1.0.0_windows_amd64.zip` |
+| Linux x86-64 | `whichwhy_1.0.0_linux_amd64.tar.gz` |
+| macOS Intel | `whichwhy_1.0.0_darwin_amd64.tar.gz` |
+| macOS Apple silicon | `whichwhy_1.0.0_darwin_arm64.tar.gz` |
+
+RC names retain the prerelease version, for example
+`whichwhy_1.0.0-rc.1_windows_amd64.zip`. Download the archive and `SHA256SUMS.txt`
+from the same release. In PowerShell, verify a chosen Windows archive before
+extracting (substitute the RC filename when appropriate):
+
+```powershell
+$archive = 'whichwhy_1.0.0_windows_amd64.zip'
+$lines = @(Get-Content -LiteralPath .\SHA256SUMS.txt | Where-Object { $_.EndsWith("  $archive", [StringComparison]::Ordinal) })
+if ($lines.Count -ne 1 -or $lines[0] -notmatch '^[0-9a-f]{64}  ') { throw 'Missing or malformed checksum' }
+if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash -ine $lines[0].Substring(0, 64)) { throw 'Checksum mismatch' }
+Expand-Archive -LiteralPath $archive -DestinationPath .\whichwhy-release
+.\whichwhy-release\whichwhy.exe --version
+```
+
+On Linux, run `sha256sum --check --ignore-missing SHA256SUMS.txt` in the download
+directory and require an `OK` for your archive. On macOS, run
+`shasum -a 256 whichwhy_1.0.0_darwin_arm64.tar.gz` (or the amd64 filename) and
+compare the full hash with that filename's entry in `SHA256SUMS.txt`. Then extract
+with `tar -xzf <archive>` in a directory you choose and run `./whichwhy --version`.
+The manifest detects changed bytes; this pipeline does not provide signing or
+notarization. The macOS amd64 artifact is cross-compiled, without a native amd64
+runtime gate; see the [release procedure](docs/release.md).
+
+WhichWhy does not install itself or edit PATH. You choose where the binary lives
+and may add that directory to PATH yourself. There is no installer, self-updater,
+or package-manager publishing in V1. Each archive includes the MIT license and a
+short usage reference.
+
+### Build from source
+
+With **Go 1.27**, from a source checkout:
 
 ```text
 go build ./cmd/whichwhy
@@ -49,7 +92,8 @@ go build ./cmd/whichwhy
 
 On Windows, run `.\whichwhy.exe`. On Linux or macOS,
 run `./whichwhy`. You can place the binary in a directory on your PATH yourself;
-WhichWhy does not install itself or edit your shell configuration.
+WhichWhy does not install itself or edit your shell configuration. Source/local
+builds report `whichwhy dev`; release builds embed their exact tag at build time.
 
 ## A 60-second quick start
 
@@ -179,6 +223,8 @@ describes capability detection and the safety policy.
 - [Oracle and release verification contract](docs/oracle-contract.md)
 - [Architecture](docs/architecture.md)
 - [Terminal presentation and safety](docs/terminal-presentation.md)
+- [Changelog](CHANGELOG.md)
+- [Release procedure and public-repo checklist](docs/release.md)
 
 ## Development and contributing
 
