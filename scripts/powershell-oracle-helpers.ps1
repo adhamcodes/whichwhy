@@ -25,6 +25,14 @@ function Get-OracleSessionSnapshot {
 }
 
 function Get-PassiveOracleMatches([string]$name) {
+    # Oracle discovery must not execute defaults or inspected dynamic parameters.
+    # A new function-local table preserves caller identity/content/options; an
+    # inherited AllScope object is shared and must be refused before assignment.
+    if ($null -ne $ExecutionContext.SessionState.PSVariable.Get('local:PSDefaultParameterValues') -and
+        ($ExecutionContext.SessionState.PSVariable.Get('local:PSDefaultParameterValues').Options -band [System.Management.Automation.ScopedItemOptions]::AllScope)) {
+        throw 'Oracle parameter defaults cannot be isolated from inherited AllScope state'
+    }
+    $PSDefaultParameterValues = @{}
     $preference = $ExecutionContext.SessionState.PSVariable.Get('global:PSModuleAutoLoadingPreference')
     $value = $null
     if ($null -ne $preference) { $value = $preference.Value }

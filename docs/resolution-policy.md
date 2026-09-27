@@ -160,6 +160,26 @@ non-AllScope caller variables are shadowed normally. Regenerate the bridge after
 upgrading. The fresh-session isolation suite checks every emitted scratch write,
 including loop variables and `-ErrorVariable`, on 5.1 and 7.
 
+Before any discovery query, the bridge shadows `PSDefaultParameterValues` with
+a fresh function-local empty table. Caller defaults can otherwise inject
+`Get-Command:ArgumentList`, execute inspected `dynamicparam` code, or change
+discovery parameters. The bridge neither copies/evaluates caller entries nor
+changes the caller table's `Disabled` key. Non-AllScope caller variables,
+including ReadOnly and Constant bindings, retain their identity, value/content
+and options. Inherited AllScope defaults cannot be safely shadowed: inspection
+is refused with a PowerShell error and `LASTEXITCODE=2`, before discovery or
+autoload-preference changes. Product-command forwarding remains unchanged.
+The local table disappears with the function scope, including on failure.
+Regenerate the bridge after upgrading to obtain this AUD-001 correction.
+
+`scripts/test-powershell-defaults.ps1` runs fresh-process cases on both supported
+shells for absent/null/empty defaults, injected and wildcard defaults,
+scriptblock-valued defaults, unrelated defaults, immutable bindings, AllScope,
+and inherited/nested scopes. Both grammars and formats must leave independent
+dynamic/body/default-callback markers untouched and preserve caller state.
+The oracle helper also isolates defaults and is checked against these markers;
+oracle agreement alone is not passivity evidence.
+
 ### Explicit PowerShell inspection
 
 The explicit collector runs entirely inside the existing F1 global autoload guard.

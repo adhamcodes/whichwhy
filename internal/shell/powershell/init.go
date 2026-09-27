@@ -73,6 +73,13 @@ func InitScript(executable string) string {
 	// variable (including absence) before collecting records or invoking the CLI.
 	// Use session-state APIs so the guard itself needs no utility-module import.
 	passiveDiscovery := strings.Join([]string{
+		// Parameter binding can execute caller-supplied defaults or a command's
+		// dynamicparam block via ArgumentList. Shadow the entire preference with
+		// a fresh local table; never copy/evaluate entries or mutate Disabled on
+		// the caller's table. AllScope objects cannot be safely shadowed. This
+		// guard stays after routing, before any discovery or autoload changes.
+		`if ($null -ne $ExecutionContext.SessionState.PSVariable.Get('local:PSDefaultParameterValues') -and ($ExecutionContext.SessionState.PSVariable.Get('local:PSDefaultParameterValues').Options -band [System.Management.Automation.ScopedItemOptions]::AllScope)) { $global:LASTEXITCODE = 2; throw 'whichwhy: cannot isolate PowerShell scratch variable PSDefaultParameterValues from inherited AllScope state' };`,
+		`$PSDefaultParameterValues = @{};`,
 		`$whichWhyAutoLoadingVariable = $ExecutionContext.SessionState.PSVariable.Get('global:PSModuleAutoLoadingPreference');`,
 		`$whichWhyAutoLoadingValue = $null;`,
 		`if ($null -ne $whichWhyAutoLoadingVariable) { $whichWhyAutoLoadingValue = $whichWhyAutoLoadingVariable.Value };`,
