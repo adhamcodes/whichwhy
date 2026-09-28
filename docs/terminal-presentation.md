@@ -67,10 +67,20 @@ The open layout uses a small ASCII `>` marker and whitespace to distinguish the
 primary answer, including in ANSI-only terminals and fully plain output. It does
 not require a console encoding change or a relaxation of capability detection.
 
-PowerShell's existing bridge explicitly redirects the CLI response and decodes it
-as strict UTF-8 before forwarding success/error lines. It therefore receives the
-plain layout. It does not opt into ANSI based on the existence of a parent console,
-which would contaminate pipelines, nor modify caller encoding or output settings.
+PowerShell bridge command inspection (private evidence requests) explicitly
+redirects the CLI response and decodes it as strict UTF-8 before forwarding
+success/error lines. Inspection therefore receives the plain layout. It does not
+opt into ANSI based on the existence of a parent console, which would contaminate
+pipelines, nor modify caller encoding or output settings.
+
+Public routes forwarded by the bridge, including `path`, `doctor`, help and
+version, retain normal PowerShell native-command decoding and destination behavior.
+They do not use the private response adapter. Under CP437 or CP1252, Unicode in
+their output can be decoded incorrectly even though the CLI emits correct UTF-8
+bytes. For exact machine output, capture the binary's stdout using an explicit
+UTF-8 decoder or use an environment with UTF-8 native-output decoding. Calling
+the binary directly through the same non-UTF-8 PowerShell pipeline retains that
+decoding limitation; the bridge does not adjust the caller's settings.
 
 ## Untrusted text policy
 

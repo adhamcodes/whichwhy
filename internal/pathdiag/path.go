@@ -40,6 +40,10 @@ func Inspect(value string) Report {
 // InspectPath consumes the same parsed evidence as candidate discovery without
 // reparsing, filtering, or renumbering entries. Only directory metadata is read.
 func InspectPath(path processpath.Path) Report {
+	return inspectPath(path, os.Stat)
+}
+
+func inspectPath(path processpath.Path, stat func(string) (os.FileInfo, error)) Report {
 	report := Report{RawValue: path.Raw, Entries: make([]Entry, 0, len(path.Entries))}
 	firstSeen := make(map[string]int, len(path.Entries))
 
@@ -62,14 +66,14 @@ func InspectPath(path processpath.Path) Report {
 			firstSeen[key] = entry.Index
 		}
 
-		info, err := os.Stat(entry.EffectiveValue)
+		info, err := stat(entry.EffectiveValue)
 		switch {
 		case err == nil:
 			entry.Directory = info.IsDir()
 			if !entry.Directory {
 				report.NotDirectoryCount++
 			}
-		case os.IsNotExist(err):
+		case ordinaryNotFound(err):
 			entry.Missing = true
 			report.MissingCount++
 		default:

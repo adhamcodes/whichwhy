@@ -247,7 +247,12 @@ Whitespace-only strings are nonempty at the codec boundary. Invalid UTF-16 in th
 PowerShell caller fails with an encoding exception before a native request exists.
 
 The evidence records retain their previous Base64 encoding, five-field ordering
-(type, name, source, path, alias target), separator, and semantics. Resolution
+(type, name, source, path, alias target), separator, and semantics. Record encoding
+also uses strict UTF-8: unpaired UTF-16 in metadata fails with a terminating
+PowerShell encoding error and `LASTEXITCODE=2`, with no native request or partial
+report, including under `ErrorActionPreference=Continue`. Caller preferences are
+preserved; the autoload guard has already been restored. Separator-bearing records
+still receive the existing native malformed-record rejection. Resolution
 ordering, scope, policy, claim strength, and human/JSON schema are unchanged.
 Explicit inspection uses this same transport, including reserved names and
 wildcard characters. Public parsing never reinterprets an `inspect` operand as
@@ -268,7 +273,7 @@ qualification, so those cases do not claim exact-name alias discovery. Markers
 must remain absent. Malformed native requests and unpaired UTF-16 are also tested.
 The request-transport harness temporarily selects UTF-8 stdout decoding and
 restores it. Separate response regressions start with the untouched caller
-encoding and also exercise CP437, CP1252 and UTF-8. The bridge explicitly reads
+encoding and also exercise CP437, CP1252 and UTF-8. Bridge inspection explicitly reads
 the known CLI's stdout and stderr as strict UTF-8 via redirected process streams;
 it never assigns console input/output encoding or PowerShell `OutputEncoding`.
 Both pipes drain asynchronously, then stdout lines enter the success stream and
@@ -276,6 +281,12 @@ stderr lines enter the error stream. Native exit status is retained before error
 delivery, including when the caller treats an error as terminating. Only the
 existing quoting-safe private request tokens use this adapter; public forwarding,
 strict command encoding and candidate ordering remain unchanged.
+
+Public `path` and `doctor` response tests compare bridge forwarding with ordinary
+native invocation under those same encodings. Explicit UTF-8 capture preserves
+the CLI's original Unicode PATH evidence; forwarding retains PowerShell's native
+decoding, including its CP437/CP1252 limitation. Direct invocation through that
+same decoder does not itself provide a UTF-8 capture path.
 
 Against pre-F6 commit `be55f0eb5970cf589cf9bd3544de60dfbce1d18e`, Windows
 PowerShell 5.1.26100.9444 changed `name"with"quote` to `namewithquote` and disrupted
@@ -595,6 +606,11 @@ absence. Classification uses the error actually supplied by Stat, not guesses
 from path spelling. Some malformed or overlong paths can return path-not-found
 on Windows; those observations retain that platform report without inventing a
 more specific diagnosis.
+
+PATH directory diagnostics use the same narrow Windows absence rule: file/path
+not found (2/3) and equivalent ENOENT are missing; error 53, access denied and
+other failures retain their errors and increment the error count. Wrapped errors
+keep their classification. Non-Windows diagnostic behavior is unchanged.
 
 These distinctions follow [Go's error matching](https://go.dev/src/os/error.go)
 and [Windows error definitions](https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499-),

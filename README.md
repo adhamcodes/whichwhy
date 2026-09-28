@@ -200,11 +200,16 @@ and Unicode tree lines. A compact selected answer can use a small border. Set
 text. Unknown or unsuitable consoles use ASCII decoration. Prose adapts to the
 observed width; long identities remain intact and soft-wrap in the terminal.
 
-The PowerShell bridge deliberately receives and forwards a redirected UTF-8
-response, so its reports use the plain layout even in an interactive session.
-This preserves Unicode transport and clean PowerShell pipelines without changing
-the caller's console settings. [Terminal presentation](docs/terminal-presentation.md)
-describes capability detection and the safety policy.
+PowerShell bridge command inspection uses a redirected response decoded as strict
+UTF-8, so inspection reports use the plain layout even in an interactive session.
+Public routes such as `path`, `doctor`, help and version use normal PowerShell
+native-command forwarding. Their Unicode output can be decoded incorrectly under
+CP437 or CP1252. The bridge does not change caller console encoding or output
+settings. For exact machine output from public routes, capture the binary's stdout
+with an explicit UTF-8 decoder or use an environment with UTF-8 native-output
+decoding. Direct invocation through PowerShell still uses that native decoding.
+[Terminal presentation](docs/terminal-presentation.md) describes capability
+detection and the safety policy.
 
 ## Guarantees and limits
 
